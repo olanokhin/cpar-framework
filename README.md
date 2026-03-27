@@ -1,57 +1,44 @@
 # CPAR — Cross-Provider Adversarial Review Framework
 
-## One-liner
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Status](https://img.shields.io/badge/Status-Concept%20%2B%20Case%20Study-blue.svg)]()
 
 > *N independent AI reviewers with distinct cognitive profiles, biases, and real-time internet access conduct blind iterative peer review of a document until consensus convergence.*
 
 ---
 
-## Roles
+## The Problem with Single-Model Review
+
+Any single AI reviewer has blind spots: training bias, knowledge cutoff, default complimentary tone. The solution is not a better model — it is **adversarial diversity**.
+
+CPAR composes multiple models with different RLHF signals, different training data, and different failure modes into a single review panel. Superpowers emerge from composition, not from any individual model.
+
+---
+
+## Panel Roles
 
 | Role | Model | Observed Superpower | Observed Bias |
-|------|-------|-------------------|---------------|
+|---|---|---|---|
 | **Author / Synthesizer** | Claude Sonnet | Long-context coherence, signal filtering | Conservative, low ideation |
 | **Research Validator** | Grok | Real-time OSINT, hundreds of sources per iteration | Seeks contradictions with reality |
 | **Creative Architect** | Gemini | Elegant structural solutions | Prioritises composition over grounding |
-| **Devil's Advocate** | ChatGPT | Adversarial skepticism | Engagement-optimised, default complimentary |
+| **Devil's Advocate** | ChatGPT | Adversarial skepticism | Default complimentary — skepticism carries high signal weight precisely because of this |
 
 > Roles and superpowers were **observed empirically** across iterations — not pre-assigned.
 
 ---
 
-## Model Selection Rationale
-
-| Model | Inclusion Criterion |
-|-------|-------------------|
-| Claude Sonnet | BullshitBench #1 (91% detection, 3% hallucination) → optimal synthesis node |
-| Grok | Unique real-time OSINT depth unavailable in other providers |
-| Gemini | Creative restructuring, Google Research training signal |
-| ChatGPT | Top-1 lab representation; skepticism carries high signal weight precisely because default mode is complimentary |
-| Qwen | **Excluded** — knowledge cutoff stuck at end 2024 |
-| DeepSeek | **Excluded** — non-English reasoning chain, not auditable by Author |
-
----
-
 ## Architectural Principles
 
-### 1. Blind Review
-- Each reviewer maintains independent chat with full document iteration history
-- Reviewers **never** see each other's reviews
-- Eliminates herding effect and authority bias
+**1. Blind Review**
+Each reviewer maintains independent history. Reviewers never see each other's reviews. Eliminates herding effect and authority bias.
 
-### 2. Web-Grounded Validation
-- Every reviewer uses built-in web search on every iteration
-- Grounds suggestions in real literature
-- Produces automatic live literature review as side effect
+**2. Web-Grounded Validation**
+Every reviewer uses real-time web search on every iteration. Produces automatic live literature review as a side effect.
 
-### 3. Author Isolation
-- Author receives all reviews simultaneously
-- Each review is **labelled by reviewer name**
-- Author knows the source of each suggestion
-
-### 4. Signal Voting
+**3. Signal Voting**
 ```
-Majority signal (2/3 same observation)  → strong, apply with confidence
+Majority signal (2/3 same observation)  → apply with confidence
 Minority signal (1/3 unique finding)    → do not ignore
                                           especially if source = Grok (OSINT)
 ```
@@ -64,46 +51,42 @@ Minority signal (1/3 unique finding)    → do not ignore
 INPUT: initial idea or draft
 
 PHASE 1 — DIVERGE
-  Characteristic: solution space expands aggressively
-                  tables, criteria, references grow rapidly
-  Signal to watch: volume of new insights per iteration
+  Solution space expands aggressively.
+  Tables, criteria, references grow rapidly.
 
   Loop:
-    Step 1: Author generates / updates document
-    Step 2: All reviewers receive document IN PARALLEL
-            + instruction: validate via web search,
-              find gaps vs existing literature
-    Step 3: Author receives 3 labelled reviews
-            + instruction: extract rational signals,
-              apply, produce next version
+    Author generates / updates document
+    → All reviewers receive document IN PARALLEL
+      + instruction: validate via web search,
+        find gaps vs existing literature
+    → Author receives N labelled reviews
+      + instruction: extract rational signals,
+        apply, produce next version
 
 PHASE 2 — CONVERGE
-  Characteristic: new findings overlap with existing ones
-                  reviewers begin defending current structure
-                  suggestions become stylistic / tonal
+  New findings overlap with existing ones.
+  Reviewers begin defending current structure.
+  Suggestions become stylistic / tonal.
 
-  Same loop continues until STOP CRITERION is met
+  Same loop continues until STOP CRITERION:
 
-STOP CRITERION:
-  ∀ reviewers independently conclude:
-  "marginal value of further text improvement
-   is less than value of running the experiment"
+    ∀ reviewers independently conclude:
+    "marginal value of further text improvement
+     is less than value of running the experiment"
 
-  NOT → "text is perfect"
-  BUT → opportunity cost of polishing > cost of shipping
+    NOT → "text is perfect"
+    BUT → opportunity cost of polishing > cost of shipping
 
 OUTPUT: fixed document + iteration log
 ```
 
-> Phase boundary is **emergent** — never explicitly set.
-> Arises naturally from panel dynamics, typically around iteration 5-7.
+Phase boundary is **emergent** — never explicitly set. Arises naturally from panel dynamics, typically around iteration 5–7.
 
 ---
 
-## Emergent Cross-Reviewer Synergy
+## The Critical Property: Temporal Composition
 
-The critical property of CPAR is **not** parallelism.
-It is temporal composition through the document as shared medium.
+CPAR's power is not parallelism. It is **temporal composition through the document as shared medium**.
 
 ```
 Gemini alone:            generates elegant idea
@@ -121,49 +104,63 @@ Gemini + Grok via doc:   elegant idea →
                          in neither model alone
 ```
 
-Reviewers never communicate directly.
-Superpowers compose **through the document** across iterations — not within a single cycle.
-
-> Synergy is only visible at the iteration sequence level.
+Reviewers never communicate directly. Superpowers compose **through the document** across iterations — not within a single cycle.
 
 ---
 
-## Novelty Preservation Mechanism
+## Why It Matters in Production
 
-Web-grounded reviewers continuously check:
-*"does this already exist?"*
+- **Research teams:** Automates the adversarial review process that normally requires senior researchers from multiple disciplines
+- **Cost:** Free tier on all four providers — zero marginal cost per iteration
+- **Speed:** 14-iteration review cycle completed in hours, not weeks
+- **Output:** Not just a better document — a document with a **defensible novelty gap** verified against live literature
 
-Document drifts not toward "beautiful text"
-but toward **maximum defensible novelty gap**.
+---
 
-Web search also enables reviewers to say:
-*"three similar papers were desk-rejected without empirical results — prioritise experiment over polish."*
+## Empirical Case Study
 
-CPAR functions as **research advisor**, not just text reviewer.
+```
+Document:    RCI — Recursive Convergent Inference (cs.NE)
+Iterations:  14
+Panel:       Claude Sonnet + Grok + Gemini + ChatGPT
+Tier:        Free on all four providers
+
+Phase 1:     iterations 1–5   rapid expansion
+Phase 2:     iterations 6–14  convergence
+
+Stop signal: all reviewers independently concluded
+             "run the experiment, text is sufficient"
+```
 
 ---
 
 ## Panel Configuration
 
 | Parameter | Recommendation | Rationale |
-|-----------|---------------|-----------|
+|---|---|---|
 | Panel size | N = 3 minimum, N = 5 robust | Odd number enables majority signal |
 | Provider diversity | One per top-tier lab | Different RLHF, training data, blind spots |
 | Knowledge cutoff | Must be current | Stale models miss recent literature |
-| Reasoning transparency | Must be auditable | Non-English chains not usable by Author |
 | Web search | Required for all reviewers | Grounds novelty claims in real literature |
+
+**Excluded models:**
+- Qwen — knowledge cutoff stuck at end 2024
+- DeepSeek — non-English reasoning chain, not auditable by Author
 
 ---
 
-## Empirical Result
+## Citation
 
+```bibtex
+@misc{anokhin2026cpar,
+  title  = {CPAR: Cross-Provider Adversarial Review Framework},
+  author = {Anokhin, Alex},
+  year   = {2026},
+  note   = {Concept. github.com/olanokhin/cpar-framework}
+}
 ```
-Case study:    cs.NE paper — Dynamic Recursive MoE
-Iterations:    14
-Panel:         Sonnet (Author) + Grok + Gemini + ChatGPT
-Tier:          Free on all four providers
-Phase 1:       ~iterations 1–5, rapid expansion
-Phase 2:       ~iterations 6–14, convergence
-Stop signal:   all reviewers independently concluded
-               "run the experiment, text is sufficient"
-```
+
+---
+
+**Author:** Alex Anokhin · [olanokhin@gmail.com](mailto:olanokhin@gmail.com)  
+**Date:** March 2026
