@@ -1,0 +1,13 @@
+[project]
+name = "app"
+version = "0.1.0"
+description = "CPAR — Cross-Provider Adversarial Review PoC"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.86.0",
+    "google-genai>=1.69.0",
+    "gradio>=6.10.0",
+    "openai>=2.30.0",
+    "python-dotenv>=1.2.2",
+    "xai-sdk>=1.11.0",
+]

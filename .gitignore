@@ -1,0 +1,14 @@
+# Secrets
+app/.env
+
+# Python
+app/.venv/
+app/__pycache__/
+*.pyc
+*.pyo
+
+# Session logs (committed separately as case studies)
+logs/
+
+# Claude Code local settings
+.claude/
