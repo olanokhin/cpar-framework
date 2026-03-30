@@ -1,20 +1,8 @@
----
-title: CPAR — Cross-Provider Adversarial Review
-emoji: 🔬
-colorFrom: blue
-colorTo: green
-sdk: gradio
-sdk_version: 5.23.3
-app_file: app.py
-pinned: false
-license: apache-2.0
-short_description: Blind iterative peer review by a cross-provider AI panel
----
-
 # CPAR — Cross-Provider Adversarial Review Framework
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Status](https://img.shields.io/badge/Status-Working%20System%20%2B%20Benchmarks-green.svg)]()
+[![HF Space](https://img.shields.io/badge/🤗%20Demo-HuggingFace%20Spaces-yellow.svg)](https://huggingface.co/spaces/olanokhin/cpar-framework)
 
 > *N independent AI reviewers from different providers conduct blind iterative peer review of a document until consensus convergence — composing their distinct capabilities through the document as shared medium.*
 
@@ -220,7 +208,7 @@ The token-matched single-model self-refinement comparison has not been run. That
 
 ## Next Steps
 
-1. **HuggingFace Spaces demo** — BYOK Gradio app, public
+1. ~~**HuggingFace Spaces demo**~~ ✅ [Live demo](https://huggingface.co/spaces/olanokhin/cpar-framework)
 2. **Token-matched baseline** — CPAR vs. N×T single-model self-refinement steps
 3. **arXiv technical report** — system description + case studies + benchmark results
 
