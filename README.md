@@ -1,3 +1,16 @@
+---
+title: CPAR — Cross-Provider Adversarial Review
+emoji: 🔬
+colorFrom: blue
+colorTo: green
+sdk: gradio
+sdk_version: 5.23.3
+app_file: app.py
+pinned: false
+license: apache-2.0
+short_description: Blind iterative peer review by a cross-provider AI panel
+---
+
 # CPAR — Cross-Provider Adversarial Review Framework
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
