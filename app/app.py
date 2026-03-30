@@ -1,3 +1,5 @@
+import atexit
+import glob
 import os
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -21,6 +23,16 @@ _ENV_KEYS = {
     "openai":    os.getenv("OPENAI_API_KEY", ""),
 }
 _SHOW_BYOK = not all(_ENV_KEYS.values())
+
+
+def _cleanup_tmp():
+    for f in glob.glob("/tmp/synthesis_round*.md") + glob.glob("/tmp/cpar_session_*.md"):
+        try:
+            os.unlink(f)
+        except OSError:
+            pass
+
+atexit.register(_cleanup_tmp)
 
 LABEL_GROK    = "Grok — Research Validator"
 LABEL_GEMINI  = "Gemini — Creative Architect"
@@ -88,6 +100,12 @@ def run_round(doc_input, state_doc, state_histories, state_author_history, state
 
     _log(round_n, "Starting round")
 
+    # all_outputs order:
+    # round_header, grok_acc, grok_out, gemini_acc, gemini_out, chatgpt_acc, chatgpt_out,
+    # synthesis_acc, synthesis_out, advisory_out, download_btn,
+    # history_html, state_doc, state_histories, state_author_history,
+    # state_round, state_completed_rounds, run_btn
+
     # Initial: collapse all accordions with spinner labels, clear text
     yield (
         gr.update(value=f"## Round {round_n}", visible=True),   # round_header
@@ -98,9 +116,8 @@ def run_round(doc_input, state_doc, state_histories, state_author_history, state
         gr.update(label=f"⏳ {LABEL_CHATGPT}", open=False),       # chatgpt_acc
         gr.update(value=""),                                      # chatgpt_out
         gr.update(label="Author Synthesis", open=True),           # synthesis_acc
-        gr.update(value=""),                                       # synthesis_out
+        gr.update(value=""),                                      # synthesis_out
         gr.update(value="", visible=False),                       # advisory_out
-        gr.update(visible=False),                                 # next_btn
         gr.update(visible=False),                                 # download_btn
         render_history(state_completed_rounds),                   # history_html
         state_doc,
@@ -108,7 +125,7 @@ def run_round(doc_input, state_doc, state_histories, state_author_history, state
         state_author_history,
         state_round,
         state_completed_rounds,
-        gr.update(interactive=False),                             # start_btn
+        gr.update(interactive=False),                             # run_btn
     )
 
     if missing:
@@ -119,7 +136,6 @@ def run_round(doc_input, state_doc, state_histories, state_author_history, state
             gr.update(), gr.update(),
             gr.update(), gr.update(),
             gr.update(value=f"⚠️ Missing API keys: {', '.join(missing)}. Enter them in the API Keys section above.", visible=True),
-            gr.update(visible=False),
             gr.update(visible=False),
             render_history(state_completed_rounds),
             state_doc,
@@ -152,31 +168,17 @@ def run_round(doc_input, state_doc, state_histories, state_author_history, state
 
     with ThreadPoolExecutor(max_workers=3) as ex:
         def _run(key, fn):
-            import threading
             t0 = _time.monotonic()
             _log(round_n, f"{key} → request sent")
             last_exc = None
             for attempt in range(1, 4):
                 try:
-                    holder = [None, None]  # [result, exc]
-                    def _call(h=holder):
-                        try:
-                            h[0] = "".join(fn())
-                        except Exception as e:
-                            h[1] = e
-                    t = threading.Thread(target=_call, daemon=True)
-                    t.start()
-                    t.join(timeout=120)
-                    if t.is_alive():
-                        raise TimeoutError("timed out after 120s")
-                    if holder[1] is not None:
-                        raise holder[1]
-                    result = holder[0]
+                    result = "".join(fn())
                     _log(round_n, f"{key} → done ({_time.monotonic() - t0:.1f}s, {len(result)} chars)")
                     return result
                 except Exception as e:
                     last_exc = e
-                    wait = 2 ** attempt  # 2s, 4s, 8s
+                    wait = 2 ** attempt
                     _log(round_n, f"{key} → attempt {attempt} failed: {e}; retrying in {wait}s")
                     if attempt < 3:
                         _time.sleep(wait)
@@ -199,7 +201,6 @@ def run_round(doc_input, state_doc, state_histories, state_author_history, state
                 gr.update(),  # synthesis_acc
                 gr.update(),  # synthesis_out
                 gr.update(),  # advisory_out
-                gr.update(),  # next_btn
                 gr.update(),  # download_btn
                 gr.update(),  # history_html
                 state_doc,
@@ -227,7 +228,6 @@ def run_round(doc_input, state_doc, state_histories, state_author_history, state
             gr.update(value=""),
             gr.update(value=f"⚠️ Round {round_n} aborted — {len(offline)}/3 reviewers offline. Check API keys and retry.", visible=True),
             gr.update(visible=False),
-            gr.update(visible=False),
             render_history(state_completed_rounds),
             state_doc,
             state_histories,
@@ -243,7 +243,6 @@ def run_round(doc_input, state_doc, state_histories, state_author_history, state
             append_to_history(state_histories, key, document, results[key])
 
     _log(round_n, "All reviews collected — starting author synthesis")
-    # All done — show "Synthesizing..." in synthesis box
     yield (
         gr.update(),
         gr.update(), gr.update(),
@@ -251,7 +250,6 @@ def run_round(doc_input, state_doc, state_histories, state_author_history, state
         gr.update(), gr.update(),
         gr.update(label="⏳ Author Synthesis", open=True),
         gr.update(value="Synthesizing..."),
-        gr.update(),
         gr.update(),
         gr.update(),
         gr.update(),
@@ -277,7 +275,6 @@ def run_round(doc_input, state_doc, state_histories, state_author_history, state
             gr.update(), gr.update(),
             gr.update(),  # synthesis_acc
             gr.update(value=synthesis_text),
-            gr.update(),
             gr.update(),
             gr.update(),
             gr.update(),
@@ -338,7 +335,6 @@ def run_round(doc_input, state_doc, state_histories, state_author_history, state
         gr.update(label="✅ Author Synthesis", open=True),
         gr.update(value=synthesis_text),
         gr.update(value=advisory_md, visible=True),
-        gr.update(value=f"Run Round {new_round_n}", visible=True),
         gr.update(value=tmp.name, visible=True),
         render_history(updated_completed),
         synthesis_text,
@@ -346,7 +342,7 @@ def run_round(doc_input, state_doc, state_histories, state_author_history, state
         state_author_history,
         new_round_n,
         updated_completed,
-        gr.update(visible=False),
+        gr.update(value=f"Run Round {new_round_n}", interactive=True),
     )
 
 
@@ -380,7 +376,10 @@ with gr.Blocks(title="CPAR — Cross-Provider Adversarial Review") as demo:
         lines=15, label="Your document or idea",
         placeholder="Paste your document or describe your idea here..."
     )
-    start_btn = gr.Button("Start Round 1", variant="primary")
+
+    with gr.Row():
+        run_btn   = gr.Button("Start Round 1", variant="primary")
+        reset_btn = gr.Button("🔄 New session", variant="stop")
 
     round_header = gr.Markdown(visible=False)
 
@@ -398,12 +397,9 @@ with gr.Blocks(title="CPAR — Cross-Provider Adversarial Review") as demo:
     advisory_out  = gr.Markdown(visible=False)
 
     with gr.Row():
-        next_btn     = gr.Button("Next Round", visible=False, variant="primary")
         download_btn = gr.DownloadButton(label="Download synthesis", visible=False, variant="secondary")
-
-    with gr.Row():
-        export_btn  = gr.Button("Export full session", variant="secondary")
-        export_file = gr.DownloadButton(label="Download session log", visible=False, variant="secondary")
+        export_btn   = gr.Button("Export full session", variant="secondary")
+        export_file  = gr.DownloadButton(label="Download session log", visible=False, variant="secondary")
 
     history_html = gr.HTML()
 
@@ -414,7 +410,6 @@ with gr.Blocks(title="CPAR — Cross-Provider Adversarial Review") as demo:
         chatgpt_acc, chatgpt_out,
         synthesis_acc, synthesis_out,
         advisory_out,
-        next_btn,
         download_btn,
         history_html,
         state_doc,
@@ -422,7 +417,7 @@ with gr.Blocks(title="CPAR — Cross-Provider Adversarial Review") as demo:
         state_author_history,
         state_round,
         state_completed_rounds,
-        start_btn,
+        run_btn,
     ]
 
     all_inputs = [
@@ -438,8 +433,47 @@ with gr.Blocks(title="CPAR — Cross-Provider Adversarial Review") as demo:
         key_openai,
     ]
 
-    start_btn.click(fn=run_round, inputs=all_inputs, outputs=all_outputs)
-    next_btn.click(fn=run_round, inputs=all_inputs, outputs=all_outputs)
+    def reset_session():
+        return (
+            "",                  # doc_input
+            "",                  # state_doc
+            make_histories(),    # state_histories
+            [],                  # state_author_history
+            1,                   # state_round
+            [],                  # state_completed_rounds
+            gr.update(visible=False),                              # round_header
+            gr.update(label=LABEL_GROK, open=False),              # grok_acc
+            gr.update(value=""),                                   # grok_out
+            gr.update(label=LABEL_GEMINI, open=False),            # gemini_acc
+            gr.update(value=""),                                   # gemini_out
+            gr.update(label=LABEL_CHATGPT, open=False),           # chatgpt_acc
+            gr.update(value=""),                                   # chatgpt_out
+            gr.update(label="Author Synthesis", open=True),       # synthesis_acc
+            gr.update(value=""),                                   # synthesis_out
+            gr.update(value="", visible=False),                   # advisory_out
+            gr.update(visible=False),                             # download_btn
+            "",                                                    # history_html
+            gr.update(value="Start Round 1", interactive=True),  # run_btn
+        )
+
+    reset_btn.click(
+        fn=reset_session,
+        outputs=[
+            doc_input,
+            state_doc, state_histories, state_author_history, state_round, state_completed_rounds,
+            round_header,
+            grok_acc, grok_out,
+            gemini_acc, gemini_out,
+            chatgpt_acc, chatgpt_out,
+            synthesis_acc, synthesis_out,
+            advisory_out,
+            download_btn,
+            history_html,
+            run_btn,
+        ],
+    )
+
+    run_btn.click(fn=run_round, inputs=all_inputs, outputs=all_outputs)
     export_btn.click(fn=make_export_file, inputs=[state_completed_rounds], outputs=[export_file]).then(
         fn=lambda: gr.update(visible=True), outputs=[export_file]
     )
