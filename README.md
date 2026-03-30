@@ -1,8 +1,7 @@
 # CPAR — Cross-Provider Adversarial Review Framework
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Status](https://img.shields.io/badge/Status-Working%20System%20%2B%20Case%20Studies-green.svg)]()
-[![HF Space](https://img.shields.io/badge/Demo-HuggingFace%20Spaces-yellow.svg)]()
+[![Status](https://img.shields.io/badge/Status-Working%20System%20%2B%20Benchmarks-green.svg)]()
 
 > *N independent AI reviewers from different providers conduct blind iterative peer review of a document until consensus convergence — composing their distinct capabilities through the document as shared medium.*
 
@@ -27,14 +26,14 @@ CPAR composes models from different labs with different RLHF objectives, differe
 | **Creative Architect** | Gemini | Elegant structural solutions | Prioritises composition over grounding |
 | **Devil's Advocate** | ChatGPT | Adversarial skepticism | Default complimentary — skepticism carries high signal weight precisely because of this |
 
-> Tendencies were **observed empirically** across iterations of case studies — not pre-assigned. They are versioned observations, not stable model properties. Verify against your panel configuration.
+> Tendencies were **observed empirically** across iterations of case studies — not pre-assigned. They are versioned observations, not stable model properties.
 
 ---
 
 ## Architectural Principles
 
 **1. Blind Review**
-Each reviewer maintains independent conversation history. Reviewers never see each other's reviews. This mitigates herding bias and authority effects.
+Each reviewer maintains independent conversation history. Reviewers never see each other's reviews. Mitigates herding bias and authority effects.
 
 **2. Web-Grounded Validation**
 Every reviewer uses real-time web search on every iteration. Live literature review is a side effect — novelty claims are continuously checked against what already exists.
@@ -107,13 +106,52 @@ All three runs converged in 3 rounds.
 
 | Input (one sentence) | Domain | Rounds | Session Log | Final Synthesis |
 |---|---|---|---|---|
-| "Smaller context windows force better prompt engineering and produce higher quality outputs than large context windows" | Technical / CS | 3 | [log](cases/session_context_windows.md) | [synthesis](cases/synthesis_context_windows.md) |
-| "Vibe coding is a valid software engineering methodology for production systems" | Contested / Engineering | 3 | [log](cases/session_vibe_coding.md) | [synthesis](cases/synthesis_vibe_coding.md) |
-| "The most important unsolved problem in LLM alignment is not values but epistemics — models that confidently don't know what they don't know" | Philosophical / AI Safety | 3 | [log](cases/session_llm_alignment.md) | [synthesis](cases/synthesis_llm_alignment.md) |
+| Context windows claim | Technical / CS | 3 | [log](cases/session_context_windows.md) | [synthesis](cases/synthesis_context_windows.md) |
+| Vibe coding claim | Contested / Engineering | 3 | [log](cases/session_vibe_coding.md) | [synthesis](cases/synthesis_vibe_coding.md) |
+| LLM alignment claim | Philosophical / AI Safety | 3 | [log](cases/session_llm_alignment.md) | [synthesis](cases/synthesis_llm_alignment.md) |
+**Observation:** All three inputs had zero citations. All three outputs contained verified citations sourced by Grok via real-time web search. Live literature review is an architectural side effect, not a separately invoked feature.
 
-**Key observation:** All three inputs were single sentences with zero citations. All three outputs contained verified citations sourced by Grok via real-time web search. Live literature review is an architectural side effect, not a separately invoked feature.
+---
 
-**Key observation:** All three inputs were single sentences with zero citations. All three outputs contained verified citations sourced by Grok via real-time web search. Live literature review is an architectural side effect, not a separately invoked feature.
+## Baseline Comparison
+
+To evaluate whether CPAR adds value beyond single-model generation, we ran a blind A/B comparison across two baselines:
+
+- **Zero-shot generic** — Claude Sonnet with a minimal prompt: *"Analyze the following claim and produce an improved version."*
+- **Zero-shot academic** — Claude Sonnet with a structured academic prompt specifying output format, sections, and research agenda.
+
+All comparisons were judged by Grok with real-time web + X search in blind A/B mode (random position assignment).
+
+### CPAR vs Zero-Shot Generic
+
+| Case | Factual | Balance | Structure | Practical | Overall |
+|------|---------|---------|-----------|-----------|---------|
+| context_windows | ✅ CPAR | ✅ CPAR | ✅ CPAR | ✅ CPAR | ✅ CPAR |
+| vibe_coding | ✅ CPAR | ✅ CPAR | ✅ CPAR | ✅ CPAR | ✅ CPAR |
+| llm_alignment | ✅ CPAR | ✅ CPAR | ✅ CPAR | ✅ CPAR | ✅ CPAR |
+
+**CPAR wins 3/3 overall, 15/15 criteria.**
+
+### CPAR vs Zero-Shot Academic
+
+| Case | Factual | Balance | Structure | Practical | Overall |
+|------|---------|---------|-----------|-----------|---------|
+| context_windows | ✅ CPAR | ✅ CPAR | ⬜ Zero-shot | ⬜ Zero-shot | ⬜ Zero-shot |
+| vibe_coding | ✅ CPAR | ⬜ Zero-shot | ⬜ Zero-shot | ✅ CPAR | ✅ CPAR |
+| llm_alignment | ⬜ Zero-shot | ⬜ Zero-shot | ⬜ Zero-shot | ⬜ Zero-shot | ⬜ Zero-shot |
+
+**CPAR wins 1/3 overall.**
+
+Full verdict logs: [`baselines/`](baselines/)
+
+- [comparison_summary_grok_generic.md](baselines/comparison_summary_grok_generic.md)
+- [comparison_summary_grok_academic.md](baselines/comparison_summary_grok_academic.md)
+
+### Interpretation
+
+CPAR with a generic Author prompt consistently outperforms zero-shot with an equivalent generic prompt across all domains and criteria. When zero-shot receives an explicit academic structure prompt, it outperforms CPAR on structure and practical organisation.
+
+This identifies the **Author prompt as the primary control variable** in CPAR. The architecture separates content generation (reviewers) from output formatting (Author prompt) — changing the Author prompt changes the output target without modifying the review process. The academic baseline advantage on structure is therefore a prompt engineering advantage, not an architectural one.
 
 ---
 
@@ -122,23 +160,14 @@ All three runs converged in 3 rounds.
 **CPAR is:**
 - A working cross-provider adversarial review system with a reference implementation
 - A workflow architecture that applies blind peer review principles to document improvement
-- Empirically observed to converge in 3 rounds on single-sentence inputs across three domains
+- Empirically shown to outperform zero-shot with equivalent prompting across three domains
 
 **CPAR is not:**
-- A validated framework with controlled benchmarks
+- A validated framework with controlled benchmarks at scale
 - A replacement for expert human review
 - A claim that composition always beats a stronger single model
 
-The critical baseline comparison — CPAR vs. token-matched single-model self-refinement — has not been run. That is the next empirical step.
-
----
-
-## Why It Matters
-
-- **Research teams:** Turns a one-sentence idea into a cited, structured document ready for refinement
-- **Automatic literature review:** Web-grounded reviewers continuously check novelty against live sources
-- **Cross-lab diversity:** Each reviewer brings a different lab's training signal, failure modes, and tool access — blind to the others
-- **Cost:** Working implementation runs on free tiers across all four providers
+The token-matched single-model self-refinement comparison has not been run. That is the next empirical step.
 
 ---
 
@@ -169,17 +198,18 @@ The critical baseline comparison — CPAR vs. token-matched single-model self-re
 | Convergence judge (GPT as independent judge) | ✅ |
 | Session export and iteration logs | ✅ |
 | Case study logs (`cases/`) | ✅ |
-| Benchmark comparison vs. single-model | ❌ |
+| Baseline comparison scripts (`eval/`) | ✅ |
+| Baseline comparison results (`baselines/`) | ✅ |
+| Token-matched self-refinement comparison | ❌ |
 | pip-installable library | ❌ |
 
 ---
 
 ## Next Steps
 
-1. **Commit case study logs** — three runs are complete; logs go into `cases/`
-2. **HuggingFace Spaces demo** — BYOK Gradio app, public
-3. **Baseline comparison** — same input, single-model (Claude Sonnet solo) vs. CPAR; blind human eval
-4. **arXiv technical report** — system description + three case studies + convergence analysis
+1. **HuggingFace Spaces demo** — BYOK Gradio app, public
+2. **Token-matched baseline** — CPAR vs. N×T single-model self-refinement steps
+3. **arXiv technical report** — system description + case studies + benchmark results
 
 ---
 
@@ -190,7 +220,7 @@ The critical baseline comparison — CPAR vs. token-matched single-model self-re
   title  = {CPAR: Cross-Provider Adversarial Review Framework},
   author = {Anokhin, Alex},
   year   = {2026},
-  note   = {Working system + case studies. github.com/olanokhin/cpar-framework}
+  note   = {Working system + benchmarks. github.com/olanokhin/cpar-framework}
 }
 ```
 

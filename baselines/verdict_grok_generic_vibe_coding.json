@@ -1,0 +1,26 @@
+{
+  "claim": "Vibe coding is a valid software engineering methodology for production systems",
+  "variant": "generic",
+  "verdict": {
+    "factual_accuracy": {
+      "winner": "cpar",
+      "reason": "Document B provides precise definitions and verifiable citations (e.g., Karpathy Feb 2025 post, Veracode 45% vulnerability stat, Thoughtworks/Capgemini/New Stack articles all confirmed accurate via searches), with only minor discrepancy on JetBrains stat (actual 2025 adoption ~85%, not 72% non-use); Document A makes general claims without citations but aligns with consensus."
+    },
+    "balance": {
+      "winner": "cpar",
+      "reason": "Document B extensively acknowledges counterarguments with dedicated sections on validity contexts (table), augmentation conditions, industry adoption stats, and Cost of Failure framing; Document A is more dismissive with a brief table."
+    },
+    "structure": {
+      "winner": "cpar",
+      "reason": "Document B has superior organization with numbered sections, subsections, tables, clear progression from definition to evidence to roadmap; Document A is concise but less detailed and tabular."
+    },
+    "practical_value": {
+      "winner": "cpar",
+      "reason": "Document B offers highly actionable 5-point augmentation controls, CoF principle, and specific empirical experiments (e.g., MTTR, defect density studies); Document A provides a single improved claim but lacks depth."
+    },
+    "overall_winner": {
+      "winner": "cpar",
+      "reason": "Document B excels across all criteria with rigorous, cited analysis, balance, structure, and practical roadmap superior to the generic, uncited Document A."
+    }
+  }
+}
