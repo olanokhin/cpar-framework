@@ -42,6 +42,14 @@ CPAR composes models from different labs with different RLHF objectives, differe
 
 > Tendencies were **observed empirically** across iterations of case studies — not pre-assigned. They are versioned observations, not stable model properties.
 
+**On the choice of Claude as Author:** Claude's role as synthesizer is informed in part by empirical evidence of its above-average tendency to identify and reject low-quality signals rather than incorporate them uncritically. The [Bullshit Benchmark](https://github.com/petergpt/bullshit-benchmark) — a benchmark testing whether models push back on nonsensical prompts instead of confidently answering them — shows Claude exhibits stronger resistance to accepting poor-quality input than most frontier models. This property is desirable in an Author that must filter N reviewer signals, discard noise, and resolve contradictions by majority vote rather than synthesize everything it receives.
+
+**On reviewer role labels:** The role names (Research Validator, Creative Architect, Devil's Advocate) are *descriptive*, not prescriptive. All three reviewers receive an identical system prompt — no persona, no role instruction, no behavioral directive. The observed behavioral differences (Grok's citation density, Gemini's structural suggestions, GPT's adversarial stance) are emergent properties of provider-level differences in RLHF objectives, training corpora, and default generation behavior — not prompt engineering artifacts. This is verifiable in the session logs: identical input, identical instruction, three structurally distinct outputs per round.
+
+Reproducibility note: model strings are pinned per run (see `app/cpar.py`). Output diversity is a function of provider-level weight differences — not prompt variation. Pattern-level reproducibility (Grok as citation validator, Gemini as structural architect) holds across runs on the same model versions. Whether these behavioral signatures persist across major version updates is an open empirical question and a known limitation of the current design.
+
+> **Experiment snapshot — 2026-04-01.** Model versions, observed behavioral tendencies, and pricing are specific to this date and the exact model versions listed above. Role labels reflect emergent behavior observed in these versions — they may not hold across major model updates. Pricing verified against official provider documentation on the same date.
+
 ---
 
 ## Architectural Principles
