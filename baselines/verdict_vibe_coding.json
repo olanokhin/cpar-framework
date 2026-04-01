@@ -1,0 +1,34 @@
+{
+  "claim": "Vibe coding is a valid software engineering methodology for production systems",
+  "verdict": {
+    "factual_accuracy": {
+      "winner": "cpar",
+      "reason": "Document B is more precise about distinguishing related concepts and explicitly notes limitations of cited statistics (e.g., that vulnerability figures represent upper bounds for uncontrolled prompting).",
+      "quote": "The 2.74\u00d7 figure should therefore be understood as an upper bound for uncontrolled vibe coding, not as a universal property"
+    },
+    "balance": {
+      "winner": "cpar",
+      "reason": "Document B is more careful about evidentiary limits, acknowledging what cannot be definitively claimed while still reaching decisive conclusions.",
+      "quote": "An absolute claim that no such case exists anywhere would be epistemically overreaching; the accurate and defensible claim is that none have been documented"
+    },
+    "structure": {
+      "winner": "cpar",
+      "reason": "Document B has superior structural elements including an abstract, explicit evidence scoping section, and a clarifying table that distinguishes four related practices.",
+      "quote": "A critical source of confusion in public discourse is the conflation of four related but non-identical practices"
+    },
+    "practical_value": {
+      "winner": "cpar",
+      "reason": "Document B provides explicit prioritization of research needs and includes specific outcome measures for proposed studies.",
+      "quote": "This is the single highest-priority research need in this field"
+    },
+    "overall_winner": {
+      "winner": "cpar",
+      "reason": "Document B is consistently more rigorous in its distinctions, more careful with evidentiary claims, and more actionable in its conclusions throughout."
+    },
+    "_meta": {
+      "cpar_position": "B",
+      "judge_model": "zai-org/GLM-5",
+      "timestamp": "2026-04-01T14:25:12.122941"
+    }
+  }
+}

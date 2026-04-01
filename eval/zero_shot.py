@@ -1,9 +1,10 @@
 """
 Zero-shot baseline for CPAR comparison.
-Runs two variants: academic (structured) and generic (minimal).
+Variants: author_web (clean control), academic, generic.
 Usage: uv run --project app python eval/zero_shot.py
 """
 
+import sys
 import anthropic
 import os
 from datetime import datetime
@@ -12,6 +13,9 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).parent.parent
 load_dotenv(ROOT / "app" / ".env")
+sys.path.insert(0, str(ROOT / "app"))
+from prompts import AUTHOR_SYSTEM
+from cpar import compute_cost, MODEL_CLAUDE
 
 CLAIMS = [
     "Smaller context windows force better prompt engineering and produce higher quality outputs than large context windows",
@@ -33,14 +37,30 @@ evidence-informed document that:
 
 Claim: {claim}
 """,
-    "generic": """\
-Analyze the following claim and produce an improved version.
-
-Claim: {claim}
-""",
 }
 
 MODEL = "claude-sonnet-4-6"
+
+
+def run_author_web(claim: str) -> tuple[str, dict]:
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    response = client.beta.messages.create(
+        model=MODEL,
+        max_tokens=8192,
+        system=AUTHOR_SYSTEM,
+        messages=[{"role": "user", "content": claim}],
+        tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
+        betas=["web-search-2025-03-05"],
+    )
+    text = "".join(block.text for block in response.content if hasattr(block, "text"))
+    u = response.usage
+    stu = getattr(u, "server_tool_use", None)
+    usage = {
+        "input_tokens":  u.input_tokens,
+        "output_tokens": u.output_tokens,
+        "search_calls":  getattr(stu, "web_search_requests", 0) if stu else 0,
+    }
+    return text, usage
 
 
 def run_zero_shot(claim: str, prompt: str) -> str:
@@ -60,20 +80,22 @@ def slug(claim: str) -> str:
 
 def main():
     os.makedirs(ROOT / "baselines", exist_ok=True)
-    for variant, prompt in PROMPTS.items():
-        for claim in CLAIMS:
-            print(f"\n[{variant}] {claim[:70]}...")
-            result = run_zero_shot(claim, prompt)
-            fname = ROOT / "baselines" / f"zero_shot_{variant}_{slug(claim)}.md"
-            with open(fname, "w") as f:
-                f.write(f"# Zero-Shot Baseline — {variant}\n\n")
-                f.write(f"**Model:** {MODEL}  \n")
-                f.write(f"**Variant:** {variant}  \n")
-                f.write(f"**Date:** {datetime.now().strftime('%Y-%m-%d')}  \n")
-                f.write(f"**Input:** {claim}\n\n---\n\n")
-                f.write(result)
-            print(f"  → {fname.name} ({len(result)} chars)")
 
+    # author_web: clean control — same system prompt as CPAR author, web search, no reviews
+    for claim in CLAIMS:
+        print(f"\n[author_web] {claim[:70]}...")
+        result, usage = run_author_web(claim)
+        fname = ROOT / "baselines" / f"zero_shot_author_web_{slug(claim)}.md"
+        with open(fname, "w") as f:
+            f.write(f"# Zero-Shot Baseline — author_web\n\n")
+            f.write(f"**Model:** {MODEL}  \n")
+            f.write(f"**Variant:** author_web  \n")
+            cost = compute_cost(MODEL_CLAUDE, usage['input_tokens'], usage['output_tokens'], usage['search_calls'])
+            f.write(f"**Usage:** {usage['input_tokens']} in / {usage['output_tokens']} out / {usage['search_calls']} searches — **${cost:.4f}**  \n")
+            f.write(f"**Date:** {datetime.now().strftime('%Y-%m-%d')}  \n")
+            f.write(f"**Input:** {claim}\n\n---\n\n")
+            f.write(result)
+        print(f"  → {fname.name} ({len(result)} chars, {usage['input_tokens']}in/{usage['output_tokens']}out, {usage['search_calls']} searches)")
 
 if __name__ == "__main__":
     main()

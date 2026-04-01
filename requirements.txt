@@ -2,4 +2,5 @@ anthropic>=0.86.0
 google-genai>=1.69.0
 openai>=2.30.0
 python-dotenv>=1.2.2
+together>=1.4.0
 xai-sdk>=1.11.0

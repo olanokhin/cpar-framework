@@ -35,10 +35,10 @@ CPAR composes models from different labs with different RLHF objectives, differe
 
 | Role | Model | Observed Tendency | Observed Bias |
 |---|---|---|---|
-| **Author / Synthesizer** | Claude Sonnet | Long-context coherence, signal filtering | Conservative, low ideation |
-| **Research Validator** | Grok | Real-time OSINT, web + X search per iteration | Seeks contradictions with reality |
-| **Creative Architect** | Gemini | Elegant structural solutions | Prioritises composition over grounding |
-| **Devil's Advocate** | ChatGPT | Adversarial skepticism | Default complimentary — skepticism carries high signal weight precisely because of this |
+| **Author / Synthesizer** | Claude Sonnet 4.6 | Long-context coherence, signal filtering | Conservative, low ideation |
+| **Research Validator** | Grok 4.1 Fast | Real-time OSINT, web + X search per iteration | Seeks contradictions with reality |
+| **Creative Architect** | Gemini 3 Flash Preview | Elegant structural solutions | Prioritises composition over grounding |
+| **Devil's Advocate** | GPT-5.4 Mini | Adversarial skepticism | Default complimentary — skepticism carries high signal weight precisely because of this |
 
 > Tendencies were **observed empirically** across iterations of case studies — not pre-assigned. They are versioned observations, not stable model properties.
 
@@ -118,54 +118,61 @@ Three case studies were run using the working implementation. Each started from 
 
 All three runs converged in 3 rounds.
 
-| Input (one sentence) | Domain | Rounds | Session Log | Final Synthesis |
-|---|---|---|---|---|
-| Context windows claim | Technical / CS | 3 | [log](cases/session_context_windows.md) | [synthesis](cases/synthesis_context_windows.md) |
-| Vibe coding claim | Contested / Engineering | 3 | [log](cases/session_vibe_coding.md) | [synthesis](cases/synthesis_vibe_coding.md) |
-| LLM alignment claim | Philosophical / AI Safety | 3 | [log](cases/session_llm_alignment.md) | [synthesis](cases/synthesis_llm_alignment.md) |
-**Observation:** All three inputs had zero citations. All three outputs contained verified citations sourced by Grok via real-time web search. Live literature review is an architectural side effect, not a separately invoked feature.
+| Input (one sentence) | Domain | Rounds | Session Log | Final Synthesis | Zero-shot |
+|---|---|---|---|---|---|
+| Context windows claim | Technical / CS | 3 | [log](cases/session_context_windows.md) | [synthesis](cases/synthesis_context_windows.md) | [baseline](baselines/zero_shot_author_web_smaller_context_windows_force.md) |
+| Vibe coding claim | Contested / Engineering | 3 | [log](cases/session_vibe_coding.md) | [synthesis](cases/synthesis_vibe_coding.md) | [baseline](baselines/zero_shot_author_web_vibe_coding_is_a.md) |
+| LLM alignment claim | Philosophical / AI Safety | 3 | [log](cases/session_llm_alignment.md) | [synthesis](cases/synthesis_llm_alignment.md) | [baseline](baselines/zero_shot_author_web_the_most_important_unsolved.md) |
+
+**Observation:** All three inputs had zero citations. All three outputs contained verified citations sourced by reviewers via real-time web search. Live literature review is an architectural side effect, not a separately invoked feature.
 
 ---
 
 ## Baseline Comparison
 
-To evaluate whether CPAR adds value beyond single-model generation, we ran a blind A/B comparison across two baselines:
+To evaluate whether CPAR adds value beyond single-model generation, we ran a blind A/B comparison against a zero-shot baseline using the **same model, same system prompt, and same web search access** as CPAR's Author — isolating the adversarial review architecture as the sole variable.
 
-- **Zero-shot generic** — Claude Sonnet with a minimal prompt: *"Analyze the following claim and produce an improved version."*
-- **Zero-shot academic** — Claude Sonnet with a structured academic prompt specifying output format, sections, and research agenda.
+**Experimental design:**
+- **CPAR:** Claude Sonnet 4.6 (Author) + 3-reviewer panel (Grok, Gemini, GPT) × 3 rounds, all with web search
+- **Zero-shot:** Claude Sonnet 4.6, same Author system prompt, same web search, single pass
+- **Judge:** GLM-5 (Z.ai, via Together.ai) — architecturally independent from all panel members: different lab, different training corpus, different RLHF pipeline, different inference hardware (Huawei Ascend). No web search access.
+- **Blinding:** Document position randomized per case. CPAR occupied position A in 1/3 cases and position B in 2/3 cases.
 
-All comparisons were judged by Grok with real-time web + X search in blind A/B mode (random position assignment).
+### Results
 
-### CPAR vs Zero-Shot Generic
+| Case | Factual | Balance | Structure | Practical | Overall | CPAR position |
+|------|---------|---------|-----------|-----------|---------|--------------|
+| context_windows | ✅ CPAR | ✅ CPAR | ✅ CPAR | ✅ CPAR | ✅ CPAR | B |
+| vibe_coding | ✅ CPAR | ✅ CPAR | ✅ CPAR | ✅ CPAR | ✅ CPAR | B |
+| llm_alignment | ✅ CPAR | ✅ CPAR | ✅ CPAR | ✅ CPAR | ✅ CPAR | A |
 
-| Case | Factual | Balance | Structure | Practical | Overall |
-|------|---------|---------|-----------|-----------|---------|
-| context_windows | ✅ CPAR | ✅ CPAR | ✅ CPAR | ✅ CPAR | ✅ CPAR |
-| vibe_coding | ✅ CPAR | ✅ CPAR | ✅ CPAR | ✅ CPAR | ✅ CPAR |
-| llm_alignment | ✅ CPAR | ✅ CPAR | ✅ CPAR | ✅ CPAR | ✅ CPAR |
+**CPAR wins 3/3 overall, 15/15 criteria, across both document positions.**
 
-**CPAR wins 3/3 overall, 15/15 criteria.**
+Full verdict logs with per-criterion quotes: [`baselines/`](baselines/)
 
-### CPAR vs Zero-Shot Academic
+- [verdict_context_windows.json](baselines/verdict_context_windows.json)
+- [verdict_vibe_coding.json](baselines/verdict_vibe_coding.json)
+- [verdict_llm_alignment.json](baselines/verdict_llm_alignment.json)
+- [comparison_summary.md](baselines/comparison_summary.md)
 
-| Case | Factual | Balance | Structure | Practical | Overall |
-|------|---------|---------|-----------|-----------|---------|
-| context_windows | ✅ CPAR | ✅ CPAR | ⬜ Zero-shot | ⬜ Zero-shot | ⬜ Zero-shot |
-| vibe_coding | ✅ CPAR | ⬜ Zero-shot | ⬜ Zero-shot | ✅ CPAR | ✅ CPAR |
-| llm_alignment | ⬜ Zero-shot | ⬜ Zero-shot | ⬜ Zero-shot | ⬜ Zero-shot | ⬜ Zero-shot |
+### Cost Analysis
 
-**CPAR wins 1/3 overall.**
+| Case | CPAR total | Zero-shot | Ratio |
+|---|---|---|---|
+| context_windows | $0.7156 | $0.4034 | 1.77× |
+| vibe_coding | $0.8507 | $0.4188 | 2.03× |
+| llm_alignment | $0.9860 | $0.4344 | 2.27× |
+| **Average** | **$0.85** | **$0.42** | **2.02×** |
 
-Full verdict logs: [`baselines/`](baselines/)
+CPAR costs approximately **2× more** than an equivalent zero-shot call. This premium covers three rounds of parallel cross-provider review with independent web-grounded validation per round.
 
-- [comparison_summary_grok_generic.md](baselines/comparison_summary_grok_generic.md)
-- [comparison_summary_grok_academic.md](baselines/comparison_summary_grok_academic.md)
+*Pricing snapshot: 2026-04-01. Models: Claude Sonnet 4.6 ($3/$15 per MTok), Grok 4.1 Fast ($0.20/$0.50 + $5/1k search calls), Gemini 3 Flash Preview ($0.50/$3 + $14/1k search queries), GPT-5.4 Mini ($0.75/$4.50). Gemini search billed at rack rate; Google provides 5,000 free grounding queries/month shared across Gemini 3.*
 
 ### Interpretation
 
-CPAR with a generic Author prompt consistently outperforms zero-shot with an equivalent generic prompt across all domains and criteria. When zero-shot receives an explicit academic structure prompt, it outperforms CPAR on structure and practical organisation.
+The Author prompt is the primary control variable in CPAR. The architecture separates content generation (reviewers) from output synthesis (Author prompt) — applying the same prompt to both zero-shot and CPAR isolates adversarial diversity as the causal factor.
 
-This identifies the **Author prompt as the primary control variable** in CPAR. The architecture separates content generation (reviewers) from output formatting (Author prompt) — changing the Author prompt changes the output target without modifying the review process. The academic baseline advantage on structure is therefore a prompt engineering advantage, not an architectural one.
+The judge's per-criterion quotes reveal the mechanism: CPAR outputs showed higher quantitative precision, more rigorous epistemic hedging, and more actionable research agendas — properties that emerge from iterative cross-provider challenge rather than from any single model's capabilities.
 
 ---
 
@@ -174,7 +181,7 @@ This identifies the **Author prompt as the primary control variable** in CPAR. T
 **CPAR is:**
 - A working cross-provider adversarial review system with a reference implementation
 - A workflow architecture that applies blind peer review principles to document improvement
-- Empirically shown to outperform zero-shot with equivalent prompting across three domains
+- Empirically shown to outperform zero-shot with equivalent prompting and web search access across three domains and all evaluated criteria
 
 **CPAR is not:**
 - A validated framework with controlled benchmarks at scale
@@ -194,6 +201,7 @@ The token-matched single-model self-refinement comparison has not been run. That
 | Model versions | Pin specific versions per run | Prevents cross-run variance from updates |
 | Knowledge cutoff | Must be current | Stale models miss recent literature |
 | Web search | Required for all reviewers | Grounds novelty claims in real literature |
+| Judge | Must be external to panel | Eliminates evaluator-panel affiliation as confound |
 
 **Models not used in current case studies:**
 - Qwen — live search integration not confirmed in tested configuration
@@ -209,11 +217,14 @@ The token-matched single-model self-refinement comparison has not been run. That
 | Working Gradio implementation (`app/app.py`) | ✅ |
 | BYOK support (Bring Your Own Keys) | ✅ |
 | Parallel reviewers with retry logic | ✅ |
-| Convergence judge (GPT as independent judge) | ✅ |
-| Session export and iteration logs | ✅ |
-| Case study logs (`cases/`) | ✅ |
+| Per-round cost tracking (tokens + search calls + USD) | ✅ |
+| Convergence judge — GPT-5.4 Mini (internal, no zero-shot access) | ✅ |
+| Evaluation judge — GLM-5 via Together.ai (external, blind A/B) | ✅ |
+| Session export with full cost breakdown | ✅ |
+| Case study logs and syntheses (`cases/`) | ✅ |
+| Zero-shot baselines (`baselines/`) | ✅ |
 | Baseline comparison scripts (`eval/`) | ✅ |
-| Baseline comparison results (`baselines/`) | ✅ |
+| Baseline verdict logs (`baselines/`) | ✅ |
 | Token-matched self-refinement comparison | ❌ |
 | pip-installable library | ❌ |
 
@@ -234,11 +245,11 @@ The token-matched single-model self-refinement comparison has not been run. That
   title  = {CPAR: Cross-Provider Adversarial Review Framework},
   author = {Anokhin, Alex},
   year   = {2026},
-  note   = {Working system + benchmarks. github.com/olanokhin/cpar-framework}
+  note   = {Working system + benchmarks. arXiv preprint in preparation. github.com/olanokhin/cpar-framework}
 }
 ```
 
 ---
 
 **Author:** Alex Anokhin · [olanokhin@gmail.com](mailto:olanokhin@gmail.com)  
-**Date:** March 2026
+**Date:** April 2026

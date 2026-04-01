@@ -4,6 +4,7 @@ import os
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import anthropic
 import gradio as gr
 
 from cpar import (
@@ -14,6 +15,11 @@ from cpar import (
     check_convergence,
     make_histories,
     append_to_history,
+    compute_cost,
+    MODEL_GROK,
+    MODEL_GEMINI,
+    MODEL_CHATGPT,
+    MODEL_CLAUDE,
 )
 
 _ENV_KEYS = {
@@ -45,8 +51,10 @@ def render_history(completed_rounds: list) -> str:
     parts = []
     for r in completed_rounds:
         n = r["round"]
+        round_cost = sum(r.get(k, {}).get("cost", 0.0) for k in ("grok_usage", "gemini_usage", "chatgpt_usage", "author_usage"))
+        cost_label = f" — ${round_cost:.4f}" if round_cost else ""
         parts.append(
-            f"<details><summary><strong>Round {n}</strong></summary>"
+            f"<details><summary><strong>Round {n}</strong>{cost_label}</summary>"
             f"<h4>{LABEL_GROK}</h4><pre>{_esc(r['grok'])}</pre>"
             f"<h4>{LABEL_GEMINI}</h4><pre>{_esc(r['gemini'])}</pre>"
             f"<h4>{LABEL_CHATGPT}</h4><pre>{_esc(r['chatgpt'])}</pre>"
@@ -60,16 +68,56 @@ def _esc(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def _cost_table(r: dict) -> str:
+    rows = [
+        ("Grok",    r.get("grok_usage",    {})),
+        ("Gemini",  r.get("gemini_usage",  {})),
+        ("ChatGPT", r.get("chatgpt_usage", {})),
+        ("Author",  r.get("author_usage",  {})),
+    ]
+    lines = [
+        "## Cost\n",
+        "| Reviewer | Input tok | Output tok | Search calls | Cost ($) |",
+        "|----------|-----------|------------|--------------|----------|",
+    ]
+    round_total = 0.0
+    for name, u in rows:
+        inp  = u.get("input_tokens", 0)
+        out  = u.get("output_tokens", 0)
+        srch = u.get("search_calls", 0) if name != "Author" else "—"
+        cost = u.get("cost", 0.0)
+        round_total += cost
+        lines.append(f"| {name} | {inp:,} | {out:,} | {srch} | ${cost:.4f} |")
+    lines.append(f"| **Round total** | | | | **${round_total:.4f}** |")
+    return "\n".join(lines)
+
+
 def export_session(completed_rounds: list) -> str:
     lines = []
+    grand_total = 0.0
     for r in completed_rounds:
         lines.append(f"# Round {r['round']}\n")
         lines.append(f"## Grok\n{r['grok']}\n")
         lines.append(f"## Gemini\n{r['gemini']}\n")
         lines.append(f"## ChatGPT\n{r['chatgpt']}\n")
         lines.append(f"## Synthesis\n{r['synthesis']}\n")
-        lines.append("---\n")
+        lines.append(_cost_table(r))
+        round_cost = sum(r.get(k, {}).get("cost", 0.0) for k in ("grok_usage", "gemini_usage", "chatgpt_usage", "author_usage"))
+        grand_total += round_cost
+        lines.append("\n---\n")
+    lines.append(f"# Total Run Cost\n\n**${grand_total:.4f}** across {len(completed_rounds)} round(s)\n")
     return "\n".join(lines)
+
+
+def _with_cost(model: str, usage: dict) -> dict:
+    if not usage:
+        return {"input_tokens": 0, "output_tokens": 0, "search_calls": 0, "cost": 0.0}
+    return {**usage, "cost": compute_cost(
+        model,
+        usage.get("input_tokens", 0),
+        usage.get("output_tokens", 0),
+        usage.get("search_calls", 0),
+    )}
 
 
 def _log(round_n: int, msg: str) -> None:
@@ -185,10 +233,11 @@ def run_round(doc_input, state_doc, state_histories, state_author_history, state
             _log(round_n, f"{key} → all retries exhausted: {last_exc}")
             return f"[{key} reviewer offline — skipped this round]"
 
+        grok_usage, gemini_usage, chatgpt_usage = {}, {}, {}
         future_map = {
-            ex.submit(_run, "grok",    lambda: stream_grok(document, state_histories["grok"], eff_xai)): "grok",
-            ex.submit(_run, "gemini",  lambda: stream_gemini(document, state_histories["gemini"], eff_google)): "gemini",
-            ex.submit(_run, "chatgpt", lambda: stream_chatgpt(document, state_histories["chatgpt"], eff_openai)): "chatgpt",
+            ex.submit(_run, "grok",    lambda: stream_grok(document, state_histories["grok"], eff_xai, usage_out=grok_usage)): "grok",
+            ex.submit(_run, "gemini",  lambda: stream_gemini(document, state_histories["gemini"], eff_google, usage_out=gemini_usage)): "gemini",
+            ex.submit(_run, "chatgpt", lambda: stream_chatgpt(document, state_histories["chatgpt"], eff_openai, usage_out=chatgpt_usage)): "chatgpt",
         }
         for future in as_completed(future_map):
             key = future_map[future]
@@ -265,26 +314,51 @@ def run_round(doc_input, state_doc, state_histories, state_author_history, state
     _log(round_n, "Author synthesis → streaming started")
     reviews = {"Grok": grok_text, "Gemini": gemini_text, "ChatGPT": chatgpt_text}
     synthesis_text = ""
+    author_usage = {}
     _t_synth = _time.monotonic()
-    for token in stream_author(document, reviews, state_author_history, eff_anthropic):
-        synthesis_text += token
+    try:
+        for token in stream_author(document, reviews, state_author_history, eff_anthropic, usage_out=author_usage):
+            synthesis_text += token
+            yield (
+                gr.update(),
+                gr.update(), gr.update(),
+                gr.update(), gr.update(),
+                gr.update(), gr.update(),
+                gr.update(),  # synthesis_acc
+                gr.update(value=synthesis_text),
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                state_doc,
+                state_histories,
+                state_author_history,
+                state_round,
+                state_completed_rounds,
+                gr.update(),
+            )
+    except anthropic.BadRequestError as e:
+        msg = str(e)
+        notice = "⚠️ Anthropic API error: credit balance too low — please top up your Anthropic account." \
+            if "credit balance" in msg else f"⚠️ Anthropic (Author) API error: {msg}"
+        _log(round_n, f"Author synthesis → Anthropic error: {msg}")
         yield (
-            gr.update(),
+            gr.update(value=f"## Round {round_n}", visible=True),
             gr.update(), gr.update(),
             gr.update(), gr.update(),
             gr.update(), gr.update(),
-            gr.update(),  # synthesis_acc
-            gr.update(value=synthesis_text),
-            gr.update(),
-            gr.update(),
+            gr.update(label="❌ Author Synthesis", open=True),
+            gr.update(value=synthesis_text or ""),
+            gr.update(value=notice, visible=True),
+            gr.update(visible=False),
             gr.update(),
             state_doc,
             state_histories,
             state_author_history,
             state_round,
             state_completed_rounds,
-            gr.update(),
+            gr.update(interactive=True),
         )
+        return
 
     _log(round_n, f"Author synthesis → done ({_time.monotonic() - _t_synth:.1f}s, {len(synthesis_text)} chars)")
 
@@ -308,10 +382,10 @@ def run_round(doc_input, state_doc, state_histories, state_author_history, state
     # --- Update state ---
     new_round = {
         "round": round_n,
-        "grok": grok_text,
-        "gemini": gemini_text,
-        "chatgpt": chatgpt_text,
-        "synthesis": synthesis_text,
+        "grok": grok_text,         "grok_usage":    _with_cost(MODEL_GROK,    grok_usage),
+        "gemini": gemini_text,     "gemini_usage":  _with_cost(MODEL_GEMINI,  gemini_usage),
+        "chatgpt": chatgpt_text,   "chatgpt_usage": _with_cost(MODEL_CHATGPT, chatgpt_usage),
+        "synthesis": synthesis_text, "author_usage": _with_cost(MODEL_CLAUDE, author_usage),
     }
     updated_completed = state_completed_rounds + [new_round]
     new_round_n = round_n + 1
@@ -398,8 +472,7 @@ with gr.Blocks(title="CPAR — Cross-Provider Adversarial Review") as demo:
 
     with gr.Row():
         download_btn = gr.DownloadButton(label="Download synthesis", visible=False, variant="secondary")
-        export_btn   = gr.Button("Export full session", variant="secondary")
-        export_file  = gr.DownloadButton(label="Download session log", visible=False, variant="secondary")
+        export_btn   = gr.DownloadButton(label="⬇️ Export full session", variant="secondary")
 
     history_html = gr.HTML()
 
@@ -474,9 +547,7 @@ with gr.Blocks(title="CPAR — Cross-Provider Adversarial Review") as demo:
     )
 
     run_btn.click(fn=run_round, inputs=all_inputs, outputs=all_outputs)
-    export_btn.click(fn=make_export_file, inputs=[state_completed_rounds], outputs=[export_file]).then(
-        fn=lambda: gr.update(visible=True), outputs=[export_file]
-    )
+    export_btn.click(fn=make_export_file, inputs=[state_completed_rounds], outputs=[export_btn])
 
 
 if __name__ == "__main__":
