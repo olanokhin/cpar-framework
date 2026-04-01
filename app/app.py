@@ -430,6 +430,15 @@ def make_export_file(completed_rounds):
 
 with gr.Blocks(title="CPAR — Cross-Provider Adversarial Review") as demo:
     gr.Markdown("# CPAR — Cross-Provider Adversarial Review")
+    gr.Markdown("""\
+> **CPAR** runs a panel of 4 AI reviewers (Grok, Gemini, ChatGPT, Claude) \
+on your document in parallel — each from a different provider, each with \
+real-time web search, none seeing the others' reviews. Claude synthesizes \
+the signals each round until the panel converges.
+>
+> Paste any claim, idea, or draft. Press **Start Round 1**. \
+Run 2–4 rounds. Export the full session log when done.
+""")
 
     state_doc             = gr.State("")
     state_histories       = gr.State(make_histories())
@@ -448,7 +457,11 @@ with gr.Blocks(title="CPAR — Cross-Provider Adversarial Review") as demo:
 
     doc_input = gr.Textbox(
         lines=15, label="Your document or idea",
-        placeholder="Paste your document or describe your idea here..."
+        placeholder=(
+            "Example: \"Smaller context windows force better prompt engineering "
+            "and produce higher quality outputs than large context windows\"\n\n"
+            "Paste any claim, idea, draft, or document."
+        ),
     )
 
     with gr.Row():
@@ -548,6 +561,14 @@ with gr.Blocks(title="CPAR — Cross-Provider Adversarial Review") as demo:
 
     run_btn.click(fn=run_round, inputs=all_inputs, outputs=all_outputs)
     export_btn.click(fn=make_export_file, inputs=[state_completed_rounds], outputs=[export_btn])
+
+    gr.Markdown("""\
+---
+Built by [Alex Anokhin](https://olanokhin.com) · \
+[GitHub](https://github.com/olanokhin/cpar-framework) · \
+[LinkedIn](https://linkedin.com/in/olanokhin) · \
+arXiv preprint in preparation
+""")
 
 
 if __name__ == "__main__":
