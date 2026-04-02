@@ -1,0 +1,451 @@
+\documentclass[11pt, a4paper]{article}
+
+% Required Packages
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{geometry}
+\geometry{margin=1in}
+
+% Code block styling
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegray},
+    keywordstyle=\color{blue},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{orange},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=4
+}
+\lstset{style=mystyle}
+
+% Hyperlink setup
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,
+    urlcolor=blue,
+    citecolor=black,
+}
+
+\title{\textbf{CPAR: Cross-Provider Adversarial Review}}
+\author{Alex Anokhin\\
+\small\texttt{olanokhin@gmail.com}\\
+\small\url{https://github.com/olanokhin/cpar-framework}}
+\date{April 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We present CPAR (Cross-Provider Adversarial Review), a framework in which $N$ independent language models from different providers conduct blind iterative peer review of a document until consensus convergence. Unlike single-model self-refinement, CPAR composes models with distinct RLHF objectives, training corpora, and systematic failure modes into a cross-provider adversarial panel --- designed to mitigate herding bias through enforced reviewer blindness and real-time web-grounded validation on every iteration. The framework introduces three architectural contributions: \textit{temporal composition via shared document}, in which reviewer capabilities compose across iterations without direct inter-reviewer communication; \textit{majority-vote signal extraction}, which resolves contradictory reviewer signals by requiring agreement from at least 2 out of 3 reviewers; and an \textit{opportunity-cost convergence criterion}, which halts iteration when marginal document improvement falls below the value of running the proposed experiment.
+
+We report a pilot evaluation across three contested claims spanning technical, engineering, and AI safety domains. CPAR outputs were compared against a zero-shot baseline using the same model, system prompt, and web search access --- isolating adversarial panel diversity as the sole architectural variable. A blind A/B evaluation by an independent judge (GLM-5, architecturally unaffiliated with all panel members) found CPAR superior across all four evaluated criteria (factual accuracy, balance, structure, practical value) in all three cases, at approximately $2\times$ the token cost of the zero-shot baseline. We frame these findings as a proof-of-concept; limitations including small sample size, absence of variance measurement, and a potential structural confound in LLM-based evaluation are discussed explicitly.
+\end{abstract}
+
+% ─────────────────────────────────────────────
+\section{Introduction}
+% ─────────────────────────────────────────────
+
+The use of large language models (LLMs) for automated evaluation and iterative improvement of text has become a central component in alignment, reasoning, and content generation pipelines. Approaches such as LLM-as-a-Judge and self-refinement have demonstrated improvements in coherence, stylistic quality, and localized reasoning across a range of tasks.
+
+However, these methods exhibit structural limitations when they rely on a single model or closely related model families. When a model critiques its own output, both generation and evaluation are constrained by shared pre-training data, RLHF objectives, and inductive biases. Iterative refinement can therefore reinforce initial assumptions rather than challenge them, leading to failure modes such as bias amplification or insufficient correction of deeper factual and conceptual errors. A second limitation concerns termination: iterative systems typically rely on fixed iteration limits or unconstrained debate, with no principled criterion for when further refinement ceases to be beneficial.
+
+In contrast, human knowledge production relies on adversarial peer review by independent experts with diverse perspectives. This process introduces epistemic diversity, enabling the identification and correction of errors that may not be visible from a single viewpoint. We hypothesize that achieving comparable robustness in LLM-generated artifacts requires moving beyond single-model refinement toward structured interaction between epistemically independent models with a principled stopping criterion.
+
+To this end, we introduce \textbf{CPAR (Cross-Provider Adversarial Review)} --- a multi-agent framework that composes heterogeneous LLMs into a blind, iterative peer-review process. The framework's execution pipeline mirrors its acronym, consisting of four operational components: the initial \textbf{C}laim, the reviewer \textbf{P}anel, the \textbf{A}rgumentation phase, and the \textbf{R}esolution/Synthesis phase. Unlike conventional multi-agent debate systems, where agents interact through a shared conversational context, CPAR enforces strict epistemic isolation: reviewers do not observe each other's critiques. Instead, their outputs compose indirectly through an evolving document across iterations --- a mechanism we term \textit{temporal composition via shared medium}. Each reviewer is grounded via real-time web search, while a designated synthesizer aggregates critiques, resolves conflicts by majority vote, and produces the next document version. Iteration terminates when an independent Convergence Judge estimates that the marginal epistemic gain of further refinement is outweighed by the opportunity cost of continued inference.
+
+We summarize our contributions as follows:
+\begin{itemize}
+    \item \textbf{CPAR Framework.} A multi-agent architecture for cross-provider blind adversarial review, introducing epistemic isolation, temporal composition through a shared document, majority-vote signal extraction, and an opportunity-cost convergence criterion.
+    \item \textbf{System Implementation.} An open-source implementation with parallel reviewer execution, real-time cost tracking, retry handling, and session export, available via Hugging Face Spaces and GitHub.
+    \item \textbf{Pilot Evaluation.} A blind A/B comparison against a zero-shot baseline using the same base model, system prompt, and web search access --- isolating adversarial panel diversity as the sole architectural variable. Across three pilot case studies, CPAR outputs were preferred by an independent judge across all evaluated criteria.
+\end{itemize}
+
+The remainder of this paper is organized as follows. Section~\ref{sec:related_work} surveys related work. Section~\ref{sec:framework} formalizes the CPAR framework and its architectural principles. Section~\ref{sec:panel} describes the panel configuration and observed reviewer tendencies. Section~\ref{sec:algorithm} presents the algorithm. Section~\ref{sec:implementation} describes the implementation. Section~\ref{sec:evaluation} reports the empirical evaluation. Section~\ref{sec:limitations} discusses limitations and future work. Section~\ref{sec:conclusion} concludes.
+
+% ─────────────────────────────────────────────
+\section{Related Work}
+\label{sec:related_work}
+% ─────────────────────────────────────────────
+
+Prior work on improving large language model outputs can be broadly categorized into (1) self-refinement, (2) LLM-based evaluation, and (3) multi-agent collaboration. CPAR draws on all three traditions while departing from each along specific dimensions.
+
+\subsection{Self-Refinement and LLM-as-a-Judge}
+
+Reflexion~\cite{shinn2023reflexion} and Self-Refine~\cite{madaan2023self} introduced single-agent iterative loops that leverage self-generated feedback to enhance reasoning, coherence, and task performance. Subsequent research extended these paradigms across domains including code generation, mathematical reasoning, and long-form writing.
+
+Despite demonstrated improvements on localized errors and surface-level coherence, single-model self-refinement exhibits a structural limitation: because the same model serves as both generator and critic, it remains constrained by its pre-training distribution and RLHF objectives. This can lead to reinforcement of initial biases or hallucinations rather than correction of deeper epistemic errors~\cite{madaan2023self,shinn2023reflexion}. LLM-as-a-Judge approaches~\cite{zheng2023judging,gu2024survey} face an analogous challenge --- self-preference bias is documented when the judge and generator share the same or closely related model families.
+
+\subsection{Multi-Agent Debate and Collaboration Frameworks}
+
+To address the limitations of single-agent systems, prior work has explored structured multi-agent interaction. Irving et al.~\cite{irving2018ai} proposed AI safety via debate, in which two agents argue opposing positions before a human judge --- an early formalization of adversarial diversity as an epistemic mechanism. Frameworks such as ChatEval~\cite{chan2024chateval} and Mixture-of-Agents~\cite{wang2024mixture} demonstrate that structured interaction between multiple agents can improve evaluation quality and generation performance relative to single-model baselines. The broader idea that complex cognition emerges from the interaction of specialized subagents traces to Minsky~\cite{minsky1986society}, and has been revisited in the LLM context by Du et al.~\cite{du2023improving} and others.
+
+However, most existing multi-agent systems rely on shared conversational contexts, in which agents observe and respond to each other's outputs. This design introduces several well-documented challenges. Models tend to converge toward confident but potentially incorrect positions, particularly when agents share similar architectures or training objectives --- a phenomenon variously described as sycophancy, herding bias, and information cascades~\cite{du2023improving,yao2025peacemaker,taubenfeld2024systematic}. Early or strongly phrased responses disproportionately influence subsequent agents, and iterative debates often degrade into diminishing-return refinements without a principled convergence signal. These observations suggest that increasing the number of interacting agents does not fully resolve epistemic bias, and motivate alternative interaction topologies that reduce inter-agent dependence.
+
+\subsection{CPAR's Contribution}
+
+Most prior approaches respond to these limitations by improving individual critics or increasing interaction bandwidth. CPAR takes the opposite direction: it reduces inter-agent communication to zero and composes reviewer outputs through an evolving shared artifact instead.
+
+CPAR departs from prior work along three dimensions. First, reviewers do not observe each other's critiques --- eliminating direct information cascades and reducing agreement bias. Second, models are drawn from different providers (xAI, Google, OpenAI, Anthropic), serving as a practical proxy for non-identical training distributions, RLHF objectives, and failure modes. This design can be viewed as an ensemble over heterogeneous hypothesis classes rather than variations within a single model family. Whether provider diversity reliably proxies distributional independence is an empirical question beyond the scope of this paper. Third, iteration is terminated based on an explicit opportunity-cost criterion --- the trade-off between marginal improvement and the value of concluding the process --- operationalizing a stopping condition absent in most debate-based systems.
+
+Unlike prior frameworks that rely on direct agent dialogue, CPAR composes diverse signals through the document across iterations. This indirect interaction mechanism preserves reviewer independence while enabling cumulative refinement --- without requiring agents to align in a shared conversational state.
+
+To our knowledge, CPAR is among the first frameworks to jointly combine blind multi-agent review, cross-provider epistemic diversity, and an explicit cost-aware convergence criterion within a unified iterative document refinement process.
+
+% ─────────────────────────────────────────────
+\section{The CPAR Framework}
+\label{sec:framework}
+% ─────────────────────────────────────────────
+
+We formalize the Cross-Provider Adversarial Review (CPAR) framework as an iterative pipeline consisting of four primary components: the initial Claim ($C$), the Panel of heterogeneous reviewers ($P$), the Argumentation phase ($A$), and the Resolution/Synthesis phase ($R$).
+
+The framework operates on a continuous loop:
+\begin{equation}
+C_t \rightarrow P \rightarrow A \rightarrow R \rightarrow C_{t+1}
+\end{equation}
+which halts when the Convergence Judge determines that the marginal epistemic gain of $C_{t+1}$ over $C_t$ approaches zero (Section~\ref{sec:opportunity_cost}).
+
+\subsection{Architectural Principles}
+
+CPAR is built upon four mechanisms designed to maximize epistemic quality and minimize single-model bias.
+
+\begin{enumerate}
+    \item \textbf{Blind Review.} Reviewers in panel $P$ do not interact with one another in a shared context. Each reviewer independently evaluates the current document state $C_t$, maintaining a separate conversation history with no visibility into other reviewers' outputs. This architectural choice actively mitigates herding bias and authority effects. The mechanism by which independent contributions compose is described in Section~\ref{sec:temporal_comp}.
+
+    \item \textbf{Cross-Provider Adversarial Diversity.} Panel $P$ is explicitly composed of models from competing AI laboratories with distinct RLHF objectives, training corpora, and default generation behavior. The synthesizer ($R$) operates on a fourth, independent architecture. This guarantees heterogeneous priors: no single lab's optimization target dominates the synthesis.
+
+    \item \textbf{Web-Grounded Validation.} All reviewers in phase $A$ are granted real-time web search access and instructed to evaluate claims against current literature, providing inline verifiable URLs. This anchors argumentation in factual reality rather than latent-space heuristics, and makes live literature review an architectural side effect rather than a separately invoked feature.
+
+    \item \textbf{Majority-Vote Signal Extraction.} The Synthesizer ($R$) acts as lead author. It does not incorporate all reviewer feedback; instead, it extracts rational signals, discards noise, and resolves contradictions by majority vote --- requiring agreement from at least 2 out of 3 reviewers for inclusion. Minority signals (1/3) are not discarded entirely: they are flagged for scrutiny, particularly when sourced from the Research Validator role (Section~\ref{sec:panel}).
+\end{enumerate}
+
+\subsection{Temporal Composition via Shared Document}
+\label{sec:temporal_comp}
+
+The most architecturally distinctive property of CPAR is how reviewer capabilities compose. Reviewers never communicate directly. Instead, their contributions accumulate through the document across iterations: an idea introduced by one reviewer in round $t$ becomes a target for adversarial scrutiny by another in round $t+1$, without either reviewer knowing the source. This produces emergent cross-reviewer challenge without explicit coordination --- a property absent in both single-model self-refinement and concurrent multi-agent debate architectures.
+
+The phase boundary between divergence (solution space expanding, new references accumulating) and convergence (reviewers defending existing structure, suggestions becoming stylistic) is emergent --- never explicitly set. It arises naturally from panel dynamics as new reviewer findings begin to overlap with existing document content.
+
+\subsection{The Opportunity-Cost Stop Criterion}
+\label{sec:opportunity_cost}
+
+A persistent failure mode in iterative LLM pipelines is over-polishing --- models continuing to expend compute on cosmetic changes after substantive quality gains have been exhausted. CPAR addresses this via an independent \textbf{Convergence Judge}: an isolated model with no participation in the synthesis and no access to prior document versions.
+
+At the end of each argumentation phase $A$, the Convergence Judge evaluates the combined reviewer signals against an opportunity-cost criterion:
+
+\begin{quote}
+\textit{Has the marginal value of further text improvement fallen below the value of concluding the process and running the proposed experiment?}
+\end{quote}
+
+If the Judge returns a terminal boolean flag, the loop exits, yielding $C_{\text{final}}$. To prevent premature termination, convergence is structurally disabled for the first two rounds regardless of judge output --- ensuring a minimum of one full divergence phase before termination becomes possible. The judge returns a one-sentence justification alongside the binary decision, providing an auditable rationale for each stop event.
+
+% ─────────────────────────────────────────────
+\section{Panel Configuration and Observed Dynamics}
+\label{sec:panel}
+% ─────────────────────────────────────────────
+
+The effectiveness of CPAR arises not from homogeneous replication of a single model, but from the exploitation of provider-level heterogeneity. Rather than instantiating multiple copies of the same model with prompt variation, CPAR composes models from different providers, which serve as a practical proxy for non-identical training distributions, RLHF objectives, and tool-use capabilities.
+
+The panel is structured into two functional components: (1) a \textit{Divergence Engine}, consisting of multiple independent reviewers operating in parallel, and (2) a \textit{Convergence Engine}, consisting of a single synthesizer responsible for integrating reviewer feedback into a revised document.
+
+\subsection{The Review Panel (Divergence Phase)}
+
+All reviewers receive an identical system prompt instructing them to perform expert peer review: evaluate claims, identify logical gaps and factual inaccuracies, and ground critiques using external sources where available. No role-specific instructions or behavioral constraints are imposed beyond this shared directive.
+
+Despite identical prompting, consistent behavioral differences are observed across providers. These differences appear to arise from variation in training data, alignment procedures, and tool integration rather than from prompt engineering. \textbf{xAI Grok} tends to prioritize factual grounding and external verification, with outputs frequently including citations, quantitative claims, and references retrieved via integrated search --- in practice often surfacing contradictions with established knowledge or recent findings. \textbf{Google Gemini} shows a consistent tendency toward reorganization and decomposition, commonly restructuring arguments into taxonomies, proposing comparative frameworks, and improving logical flow. \textbf{OpenAI ChatGPT} often emphasizes epistemic caution, identifying overgeneralizations, requesting boundary conditions, and introducing counterexamples that challenge the robustness of the central claim.
+
+These roles are descriptive rather than prescriptive. All reviewers operate under identical instructions, and the observed differences are emergent properties of provider-level divergence rather than prompt engineering artifacts. We report these tendencies as qualitative observations rather than statistically validated behaviors; they are specific to the model versions listed in Table~\ref{tab:models} and were observed empirically across the three case studies. Whether these signatures persist across major version updates is an open empirical question and a known limitation of the current design (Section~\ref{sec:limitations}).
+
+\begin{table}[h]
+\centering
+\caption{Model configuration used in CPAR experiments.}
+\label{tab:models}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Role} & \textbf{Provider} & \textbf{Model Version} & \textbf{Tools Enabled} \\ \midrule
+Reviewer 1        & xAI       & Grok-4.1-fast       & Web search, X search \\
+Reviewer 2        & Google    & Gemini 3-flash      & Web search \\
+Reviewer 3        & OpenAI    & GPT-5.4-mini        & Web search \\
+Synthesizer       & Anthropic & Claude Sonnet 4.6   & None \\
+Convergence Judge & OpenAI    & GPT-5.4-mini        & None \\
+Evaluation Judge  & Z.ai      & GLM-5               & None \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{The Synthesizer (Convergence Phase)}
+
+The synthesizer operates independently from the review panel and is responsible for integrating reviewer feedback into a revised document. It receives the current document together with labeled critiques from all reviewers and is instructed to extract actionable signals, discard redundant or low-confidence feedback, resolve conflicts by majority agreement, and produce a coherent updated version while preserving useful structure.
+
+In the current implementation, we use Anthropic Claude Sonnet 4.6 as the synthesizer. This choice is motivated by three empirical observations from preliminary experiments. First, the model reliably executes multi-step synthesis instructions when aggregating multiple conflicting inputs. Second, it exhibits moderate resistance to over-accepting unsupported critiques --- a property independently evidenced by an open evaluation testing whether models push back on nonsensical prompts rather than confidently incorporating them, on which Claude ranks among the strongest frontier models.\footnote{The Bullshit Benchmark (PeterGPT, 2024) is an open GitHub-hosted evaluation; it has not undergone formal peer review. We cite it as corroborating evidence rather than a primary source. Available at: \url{https://github.com/petergpt/bullshit-benchmark} (accessed April 2026).} Third, its output style is sufficiently stable across iterations to facilitate meaningful cross-round comparison.
+
+We emphasize that these observations are empirical and implementation-specific. The synthesizer role can in principle be filled by any model capable of consistent multi-input aggregation; the current selection reflects practical constraints and available evidence rather than a theoretical optimality claim.
+
+\subsection{Architectural Implications}
+
+The separation between divergence (independent critique) and convergence (centralized synthesis), combined with cross-provider diversity and blind interaction, defines the core structural innovation of CPAR.
+
+This architecture departs from prior multi-agent systems in two key respects. First, epistemic isolation during the divergence phase reduces information cascades and agreement bias by preventing reviewers from observing one another's outputs. Second, indirect interaction via a shared artifact means that models influence one another only through successive document revisions rather than direct dialogue --- the temporal composition mechanism described in Section~\ref{sec:temporal_comp}.
+
+Together, these design choices enable iterative refinement while preserving diversity of perspectives across rounds --- suggesting a shift from model-centric reasoning toward process-centric reasoning over multiple independent models.
+
+% ─────────────────────────────────────────────
+\section{The CPAR Algorithm}
+\label{sec:algorithm}
+% ─────────────────────────────────────────────
+
+We formalize CPAR as a discrete-time iterative process over document states, alternating between divergence (independent critique generation) and convergence (centralized synthesis). Let $C_t$ denote the document at iteration $t$. The process produces a sequence:
+\begin{equation}
+C_0 \rightarrow C_1 \rightarrow C_2 \rightarrow \dots \rightarrow C_T
+\end{equation}
+where each transition is defined by a set of independent critiques and a synthesis operator. At a high level, CPAR can be interpreted as an approximate optimization process over an implicit epistemic quality function $Q(C)$, which is not directly observable but is estimated via critique signals and external evaluation. We treat this framing as informal intuition rather than a formal guarantee.
+
+\subsection{Pipeline Phases}
+
+Each iteration consists of three phases.
+
+\paragraph{Phase 1: Divergence (Blind Parallel Review).}
+At iteration $t$, the current document $C_t$ is broadcast to a panel of $N$ reviewers $P = \{r_1, r_2, \dots, r_N\}$. Each reviewer operates independently and produces a critique:
+\begin{equation}
+R_{i,t} = r_i(C_t), \quad i = 1, \dots, N
+\end{equation}
+To reduce information cascades and agreement bias, reviewers are epistemically isolated: they do not observe each other's outputs or internal states. Reviewer calls are executed in parallel to reduce wall-clock latency.
+
+\paragraph{Phase 2: Convergence (Synthesis Operator).}
+A synthesizer model $S$ aggregates the set of critiques:
+\begin{equation}
+C_{t+1} = S\!\left(C_t,\, \{R_{i,t}\}_{i=1}^N\right)
+\end{equation}
+The synthesizer identifies actionable, evidence-supported feedback; reconciles contradictory critiques via majority agreement; and produces a revised document. Conflict resolution is guided by a simple majority heuristic ($\geq 2$ of $N=3$ reviewers), treated as a practical approximation rather than a theoretically optimal aggregation rule.
+
+\paragraph{Phase 3: Convergence Evaluation (Stopping Criterion).}
+To determine when to terminate, CPAR introduces an external convergence function:
+\begin{equation}
+\text{Stop}(t) = J\!\left(\{R_{i,t}\}_{i=1}^N,\, C_t\right)
+\end{equation}
+where $J$ is an independent judge model with no participation in the synthesis. The judge estimates whether the marginal value of a further iteration is outweighed by the opportunity cost of continued inference. To prevent premature termination, CPAR enforces a minimum iteration count ($t \geq t_{\min}$, set to 3 in current experiments) before the stop criterion can activate.
+
+\subsection{Algorithm}
+
+The following pseudocode illustrates the core loop. Parallel reviewer execution, per-provider retry logic, and cost tracking are omitted for clarity; the full implementation is available in the accompanying repository.
+
+\begin{lstlisting}[language=Python, caption={CPAR core loop (simplified).}]
+def run_cpar(
+    initial_claim: str,
+    panel: list[Model],
+    synthesizer: Model,
+    judge: Model,
+    min_rounds: int = 3,
+) -> tuple[str, str]:
+
+    C = format_as_document(initial_claim)  # C_0
+    t = 1
+
+    while True:
+        # Phase 1: Divergence - independent critiques (run in parallel)
+        critiques = {
+            reviewer.name: reviewer.generate_critique(C)
+            for reviewer in panel
+        }
+
+        # Phase 2: Convergence - synthesis with majority-vote conflict resolution
+        C_next = synthesizer.synthesize(
+            document=C,
+            reviews=critiques,
+        )
+
+        # Phase 3: Stopping criterion (disabled for t < min_rounds)
+        if t >= min_rounds:
+            converged, reason = judge.evaluate_convergence(
+                critiques=critiques,
+            )
+            if converged:
+                return C_next, reason
+
+        C = C_next
+        t += 1
+\end{lstlisting}
+
+\subsection{Interpretation}
+
+CPAR can be viewed as a form of \textit{process-level ensemble reasoning}, where diversity is introduced not through stochastic sampling of a single model, but through independently trained models with partially uncorrelated failure modes.
+
+Unlike classical ensembles, which aggregate outputs in a single forward pass, CPAR performs iterative aggregation --- allowing critiques from round $t$ to influence generation at round $t+1$ through the evolving document state. This produces a structured diverge--converge dynamic analogous to iterative refinement in human peer review, where early rounds expand the solution space and later rounds defend and consolidate structure.
+
+% ─────────────────────────────────────────────
+\section{Implementation Details}
+\label{sec:implementation}
+% ─────────────────────────────────────────────
+
+To ensure reproducibility, practical usability, and economic transparency, we provide a complete open-source implementation of CPAR. The system is implemented in Python and includes a web-based interface built with Gradio. It can be executed locally or deployed on cloud platforms such as Hugging Face Spaces.
+
+Beyond functionality, the implementation reflects three design priorities: minimizing latency under multi-agent workloads, maintaining robustness under partial system failures, and exposing fine-grained cost and usage signals to support economically grounded decision-making.
+
+\subsection{Asynchronous Execution and Fault Tolerance}
+
+The divergence phase involves multiple independent model calls, each potentially augmented with external tool usage. Sequential execution would therefore introduce substantial latency. To address this, CPAR executes all reviewer calls in parallel using a thread-based execution model. Under this design, the wall-clock latency of the divergence phase is approximately bounded by the slowest reviewer, rather than the sum of all reviewer latencies.
+
+The system incorporates fault tolerance at the level of individual reviewer calls. Each call is retried up to a fixed number of attempts using exponential backoff, with common failure modes --- rate limits, timeouts, and transient API errors --- handled explicitly. If all retry attempts are exhausted, the system substitutes a structured fallback response rather than aborting execution. Crucially, the synthesis phase is designed to operate under partial information: the system remains functional with $N-1$ reviewers, allowing graceful degradation rather than catastrophic failure.
+
+\subsection{Telemetry and Economic Transparency}
+
+CPAR implements fine-grained telemetry at the level of individual components. For each model invocation, the system records input and output token counts, the number of external tool calls, and the estimated monetary cost based on current provider pricing. These metrics are aggregated at the iteration level and exposed both in the user interface and in exported session logs.
+
+This design enables explicit reasoning about cost--quality trade-offs, directly aligning with CPAR's opportunity-cost-based stopping criterion. We note that cost estimation may vary with provider pricing updates; the framework accommodates updated configurations without modifying core logic.
+
+\subsection{Deployment and BYOK Design}
+
+The system is publicly deployed on Hugging Face Spaces and supports both hosted and user-provided credentials. CPAR adopts a Bring Your Own Key (BYOK) design: users may supply their own API keys for each provider (Anthropic, xAI, Google, OpenAI), with optional fallback to host-managed credentials where available. This decouples infrastructure from usage cost, enabling broader experimentation without centralized quota constraints.
+
+\subsection{User Interface and Interaction Design}
+
+The Gradio-based interface exposes the internal structure of the CPAR process rather than abstracting it away. It supports real-time streaming of model outputs during both phases, progress indicators reflecting asynchronous execution, structured visualization of iteration history, and session export as a Markdown document containing the full trajectory $\{C_t\}$ and cost telemetry. Session reset mechanisms are provided for rapid experimentation.
+
+These interface choices are not purely cosmetic: visibility into intermediate document states is important for debugging, qualitative analysis, and human-in-the-loop evaluation.
+
+\subsection{Reproducibility}
+
+The complete implementation --- including the core CPAR pipeline, zero-shot baseline scripts, and blind evaluation harness --- is publicly available at:
+\begin{center}
+\url{https://github.com/olanokhin/cpar-framework}
+\end{center}
+While certain components introduce non-determinism (provider APIs, live web search, non-zero sampling temperature), full execution traces --- including per-round document versions, reviewer outputs, and cost breakdowns --- are preserved in session logs, enabling partial reproducibility through inspection and cross-run comparison.
+
+% ─────────────────────────────────────────────
+\section{Empirical Evaluation}
+\label{sec:evaluation}
+% ─────────────────────────────────────────────
+
+We evaluate CPAR in a controlled comparison against a single-model baseline, with the goal of assessing whether iterative cross-provider critique improves the epistemic quality of generated documents. Given the exploratory nature of this study, we focus on structured qualitative comparison across a small set of challenging, multi-perspective claims rather than large-scale statistical benchmarking.
+
+\subsection{Methodology}
+
+\textbf{Baseline.} The baseline condition uses the same underlying model as the CPAR synthesizer (Claude Sonnet 4.6), provided with identical system instructions and the same web-search access, but generating output in a single pass without iterative critique or multi-agent feedback. This isolates the effect of the CPAR process itself, controlling for model capability and tool access.
+
+\textbf{Evaluation protocol.} Outputs from the baseline and CPAR (after convergence, in all three cases at round 3) are evaluated by an independent LLM judge (GLM-5, Z.ai, via Together AI). GLM-5 was selected for architectural independence from all panel members: it is trained by a different lab, on a different corpus, with a different RLHF pipeline, and runs on different inference hardware (Huawei Ascend). Document order is randomized per case: CPAR occupied position A in one case and position B in two cases. Neither document is labeled with its origin. The judge evaluates each pair across four criteria: factual accuracy, balance (epistemic calibration and acknowledgment of counter-arguments), structural clarity, and practical value (actionability of conclusions or research agenda).
+
+\textbf{Evaluation set.} We evaluate CPAR on three deliberately contested claims requiring multi-perspective reasoning, trade-off analysis, and epistemic calibration:
+\begin{itemize}
+    \item \textit{Context Windows:} ``Smaller context windows force better prompt engineering and produce higher quality outputs than large context windows.''
+    \item \textit{Vibe Coding:} ``Vibe coding is a valid software engineering methodology for production systems.''
+    \item \textit{LLM Alignment:} ``The most important unsolved problem in LLM alignment is not values but epistemics --- models that confidently don't know what they don't know.''
+\end{itemize}
+
+\subsection{Results}
+
+\textbf{Summary.} Across all three case studies, CPAR was preferred over the zero-shot baseline on all four evaluation criteria in all three cases (15/15 criterion-level comparisons). Full verdict logs with per-criterion judge quotes are available in the accompanying repository. Results are summarized in Table~\ref{tab:results}.
+
+\begin{table}[h]
+\centering
+\caption{Blind A/B evaluation results. CPAR vs.\ zero-shot baseline, judged by GLM-5. (\checkmark\ = preferred by judge).}
+\label{tab:results}
+\begin{tabular}{@{}lllllll@{}}
+\toprule
+\textbf{Case} & \textbf{Factual} & \textbf{Balance} & \textbf{Structure} & \textbf{Practical} & \textbf{Overall} & \textbf{Pos.} \\ \midrule
+Context Windows & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & B \\
+Vibe Coding     & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & B \\
+LLM Alignment   & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & A \\ \bottomrule
+\multicolumn{7}{l}{\small All \checkmark\ indicate CPAR preferred. Pos.\ = document position assigned to CPAR (A or B).}
+\end{tabular}
+\end{table}
+
+While the sample size is limited, the consistency of this preference across criteria and document positions suggests a systematic rather than incidental advantage. We analyze three qualitative patterns that contribute to this outcome.
+
+\textbf{Improved epistemic calibration.} CPAR outputs more frequently include explicit boundary conditions, uncertainty estimates, and scoped claims. In the Vibe Coding case, CPAR reframes a numerical vulnerability statistic as an upper bound under specific uncontrolled conditions, whereas the baseline presents it as a general property. The judge explicitly favors this calibrated formulation, noting that it is ``more careful with evidentiary claims.''
+
+\textbf{Hallucinated references in the baseline.} In the LLM Alignment case, the zero-shot baseline cited non-existent model versions (e.g., Claude Opus 4.5, GPT-5.2) as if they were real frontier systems. The judge penalized this as a factual accuracy failure. CPAR outputs, by contrast, rely on generalized arguments and externally grounded evidence, reducing exposure to this failure mode. This pattern suggests that web-grounded iterative critique may improve robustness against confident confabulation --- a structural failure mode of single-pass generation.
+
+\textbf{Emergent structural organization.} CPAR outputs consistently exhibit explicit decomposition of claims into evaluable dimensions, use of taxonomies or comparative frameworks, and clearer separation between assumptions, evidence, and conclusions. The judge notes this as a structural advantage across all three cases. We acknowledge that LLM judges may conflate structural sophistication with epistemic quality; this is identified as a limitation in Section~\ref{sec:limitations}.
+
+\subsection{Cost Analysis}
+
+The quality improvements observed with CPAR come at increased computational cost. Results are summarized in Table~\ref{tab:cost}.
+
+\begin{table}[h]
+\centering
+\caption{Cost comparison: CPAR vs.\ zero-shot baseline.}
+\label{tab:cost}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Case} & \textbf{CPAR total} & \textbf{Zero-shot} & \textbf{Ratio} \\ \midrule
+Context Windows & \$0.72 & \$0.40 & $1.77\times$ \\
+Vibe Coding     & \$0.85 & \$0.42 & $2.03\times$ \\
+LLM Alignment   & \$0.99 & \$0.43 & $2.27\times$ \\ \midrule
+\textbf{Average} & \textbf{\$0.85} & \textbf{\$0.42} & $\mathbf{2.02\times}$ \\ \bottomrule
+\end{tabular}
+\par\vspace{4pt}
+\noindent{\small \textit{Pricing snapshot: 2026-04-01. Full per-provider pricing table: \texttt{app/cpar.py}.}}
+\end{table}
+
+This overhead arises from parallel critique generation, repeated synthesis steps, and external tool usage across multiple providers. The opportunity-cost convergence criterion limits unbounded cost growth by terminating iteration when marginal utility falls below the cost of continued inference. Understanding and optimizing this cost--quality trade-off is an important direction for future work.
+
+Evaluation limitations are discussed in Section~\ref{sec:limitations}.
+
+% ─────────────────────────────────────────────
+\section{Limitations and Future Work}
+\label{sec:limitations}
+% ─────────────────────────────────────────────
+
+\paragraph{Sample size.} The current evaluation covers three case studies with a single judge run per case. This constitutes a proof-of-concept demonstration rather than a statistically defensible result. Future work should scale to 30--50 claims across diverse domains including factual QA, formal reasoning, coding tasks, and contested opinion.
+
+\paragraph{The Who Watches the Watchmen Problem.} CPAR uses an LLM (GLM-5) to evaluate outputs produced by other LLMs. This introduces a fundamental circularity: the judge's own training distribution, stylistic preferences, and implicit quality priors shape what counts as ``better.'' In our evaluation, CPAR outputs systematically exhibit academic structure as an emergent property of iterative synthesis, while zero-shot outputs tend toward essay-form. GLM-5 may reward structural sophistication rather than epistemic quality, conflating the two. Future work should include a structure-matched evaluation condition and at least one human annotation component. This is the hardest confound in the current design and cannot be resolved without human ground truth.
+
+\paragraph{Structural bias in LLM judgment.} Even a well-calibrated judge may exhibit systematic preference for outputs resembling academic writing. A length- and structure-matched evaluation --- in which zero-shot outputs are post-processed to match CPAR's formatting --- would isolate content quality from presentation. Alternatively, evaluation on tasks with objective ground truth (e.g., factual QA, formal proofs) would bypass the confound entirely.
+
+\paragraph{Single judge.} All evaluations use a single judge model (GLM-5, Z.ai). Future work should establish inter-judge agreement across multiple independent models (e.g., Claude, GPT, human annotators) to measure evaluation reliability and detect systematic judge-level biases.
+
+\paragraph{No variance measurement.} Each case was run once with a single random seed. Temperature is non-zero across all providers. Reporting variance across multiple runs would strengthen reproducibility claims and quantify sensitivity to stochastic sampling.
+
+\paragraph{Claim selection bias.} All three case studies involve contested, multi-perspective claims that structurally favor ensemble reasoning. Evaluating CPAR on narrow factual queries or tasks with definitive ground-truth answers --- e.g., ``What is the capital of France?'' or formal mathematical proofs --- would establish boundary conditions more precisely.
+
+\paragraph{Token-matched self-refinement baseline.} CPAR consumes approximately $2\times$ the tokens of a zero-shot call. A fair architectural comparison requires a baseline in which a single model iteratively self-refines using the same total token budget --- isolating cross-provider diversity as the causal variable rather than compute volume.
+
+\paragraph{Ablation study.} The contribution of each panel member has not been isolated. Removing individual reviewers (Grok only, Gemini only, GPT only; single round vs.\ three rounds) would identify which components drive quality gains and which are redundant.
+
+\paragraph{Model version sensitivity.} Observed reviewer tendencies are specific to the model versions used on 2026-04-01. Whether these behavioral signatures persist across major version updates is an open empirical question.
+
+\paragraph{Provider availability risk.} CPAR's current implementation depends on simultaneous availability of four commercial APIs (Anthropic, xAI, Google, OpenAI). Rate limits, outages, or pricing changes at any single provider can degrade or block execution. Future work should explore fallback routing, provider substitution strategies, and open-weight alternatives to reduce dependency on commercial infrastructure.
+
+% ─────────────────────────────────────────────
+\section{Conclusion}
+\label{sec:conclusion}
+% ─────────────────────────────────────────────
+
+As large language models become central tools for reasoning, evaluation, and knowledge production, the limitations of single-model paradigms are becoming increasingly salient. Failure modes such as bias reinforcement, insufficient epistemic calibration, and limited ability to challenge initial assumptions suggest that further gains may not arise solely from scaling model size or refining single-agent prompting strategies.
+
+In this work, we introduced CPAR (Cross-Provider Adversarial Review), a multi-agent framework that leverages independent models from different providers to perform iterative critique and synthesis under conditions of epistemic isolation. By combining blind review, cross-provider diversity, and tool-augmented validation within a structured pipeline, CPAR provides a practical mechanism for incorporating adversarial perspectives into automated document generation.
+
+Our empirical study --- while limited in scale --- suggests that this approach can improve the quality of generated documents relative to strong single-model baselines, particularly in terms of factual calibration, structural organization, and multi-perspective reasoning. These findings should be interpreted as preliminary, but they indicate that process-level design choices can play a significant role alongside model capability in determining output quality.
+
+A central feature of CPAR is its opportunity-cost-based stopping criterion, which frames iterative refinement as an explicit trade-off between expected marginal improvement and computational cost. This perspective introduces a practical control signal for multi-agent systems, where unconstrained iteration would otherwise lead to diminishing returns and unbounded expense.
+
+More broadly, CPAR illustrates a shift from model-centric to process-centric approaches to LLM reasoning. Rather than relying on a single model to approximate all aspects of evaluation and synthesis, the framework distributes these functions across independently trained models and composes their outputs through an evolving shared artifact --- mitigating certain forms of agreement bias while preserving diversity of perspectives across iterations.
+
+We release the full implementation, evaluation pipeline, and case study artifacts to support reproducibility and further investigation of heterogeneous multi-agent systems. Open challenges --- including token-matched baselines, human evaluation, and ablation of individual panel members --- are discussed in Section~\ref{sec:limitations}.
+
+Taken together, these results suggest that the next gains in LLM-assisted reasoning may come not only from better models, but from better processes for combining them.
+
+% ─────────────────────────────────────────────
+% Bibliography
+% ─────────────────────────────────────────────
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

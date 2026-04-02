@@ -174,7 +174,7 @@ Full verdict logs with per-criterion quotes: [`baselines/`](baselines/)
 
 CPAR costs approximately **2× more** than an equivalent zero-shot call. This premium covers three rounds of parallel cross-provider review with independent web-grounded validation per round.
 
-*Pricing snapshot: 2026-04-01. Models: Claude Sonnet 4.6 ($3/$15 per MTok), Grok 4.1 Fast ($0.20/$0.50 + $5/1k search calls), Gemini 3 Flash Preview ($0.50/$3 + $14/1k search queries), GPT-5.4 Mini ($0.75/$4.50). Gemini search billed at rack rate; Google provides 5,000 free grounding queries/month shared across Gemini 3.*
+*Pricing snapshot: 2026-04-01. Full per-provider pricing table: [`app/cpar.py`](app/cpar.py).*
 
 ### Interpretation
 
@@ -233,6 +233,7 @@ The token-matched single-model self-refinement comparison has not been run. That
 | Zero-shot baselines (`baselines/`) | ✅ |
 | Baseline comparison scripts (`eval/`) | ✅ |
 | Baseline verdict logs (`baselines/`) | ✅ |
+| arXiv technical report (`paper/`) | ✅ |
 | Token-matched self-refinement comparison | ❌ |
 | pip-installable library | ❌ |
 
@@ -242,7 +243,7 @@ The token-matched single-model self-refinement comparison has not been run. That
 
 1. ~~**HuggingFace Spaces demo**~~ ✅ [Live demo](https://huggingface.co/spaces/olanokhin/cpar-framework)
 2. **Token-matched baseline** — CPAR vs. N×T single-model self-refinement steps
-3. **arXiv technical report** — system description + case studies + benchmark results
+3. ~~**arXiv technical report**~~ ✅ [arXiv preprint](https://arxiv.org/abs/XXXX.XXXXX) *(update with ID after submission)*
 
 ---
 
@@ -250,12 +251,17 @@ The token-matched single-model self-refinement comparison has not been run. That
 
 ```bibtex
 @misc{anokhin2026cpar,
-  title  = {CPAR: Cross-Provider Adversarial Review Framework},
-  author = {Anokhin, Alex},
-  year   = {2026},
-  note   = {Working system + benchmarks. arXiv preprint in preparation. github.com/olanokhin/cpar-framework}
+  title         = {CPAR: Cross-Provider Adversarial Review},
+  author        = {Anokhin, Alex},
+  year          = {2026},
+  eprint        = {XXXX.XXXXX},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.AI},
+  url           = {https://arxiv.org/abs/XXXX.XXXXX}
 }
 ```
+
+*(Update `eprint` and `url` with arXiv ID after submission.)*
 
 ---
 

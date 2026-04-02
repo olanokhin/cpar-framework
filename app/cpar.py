@@ -31,7 +31,7 @@ MODEL_CLAUDE = "claude-sonnet-4-6"
 PRICING_DATE = "2026-04-01"
 PRICING = {
     MODEL_CLAUDE:  {"input": 3.00,  "output": 15.00, "search": 10.0},
-    MODEL_GROK:    {"input": 0.20,  "output": 6.00, "search": 0.50},
+    MODEL_GROK:    {"input": 0.20,  "output": 0.50, "search": 5.00},
     MODEL_GEMINI:  {"input": 0.50, "output": 3.00,  "search": 14.0},
     MODEL_CHATGPT: {"input": 0.75,  "output": 4.50,  "search": 10.0},
 }
