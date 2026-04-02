@@ -15,9 +15,10 @@ short_description: Blind iterative peer review by a cross-provider AI panel
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Status](https://img.shields.io/badge/Status-Working%20System%20%2B%20Benchmarks-green.svg)]()
+[![Release](https://img.shields.io/github/v/release/olanokhin/cpar-framework)](https://github.com/olanokhin/cpar-framework/releases/latest)
 [![arXiv](https://img.shields.io/badge/arXiv-preprint-red)](https://arxiv.org)
 [![HF Space](https://img.shields.io/badge/🤗%20Demo-HuggingFace%20Spaces-yellow.svg)](https://huggingface.co/spaces/olanokhin/cpar-framework)
-[![Author](https://img.shields.io/badge/Author-Oleksandr_Anokhin-purple)](https://olanokhin.com)
+[![Author](https://img.shields.io/badge/Author-Alex_Anokhin-purple)](https://olanokhin.com)
 
 > *N independent AI reviewers from different providers conduct blind iterative peer review of a document until consensus convergence — composing their distinct capabilities through the document as shared medium.*
 
